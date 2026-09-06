@@ -457,12 +457,19 @@ test('space drags do not re-amplify sound already decaying in the effects', asyn
     }
     return {
       tailRms: Math.sqrt(referenceEnergy / (rate * 6)),
+      differenceRms: Math.sqrt(differenceEnergy / (rate * 6)),
       gainRatio: Math.sqrt(changedEnergy / referenceEnergy),
       relativeDifference: Math.sqrt(differenceEnergy / referenceEnergy),
     }
   }, defaults)
   expect(result.tailRms).toBeGreaterThan(0.0000001)
-  expect(result.relativeDifference, JSON.stringify(result)).toBeLessThan(.00001)
+  const diagnostic = JSON.stringify(result)
+  // Platform-specific float32 rendering can differ in the final bits. Bound
+  // both the absolute error (-140 dBFS RMS) and the relative change (0.01%).
+  // The original return/feedback bug increased tail amplitude by 162.5%.
+  expect(result.differenceRms, diagnostic).toBeLessThan(.0000001)
+  expect(result.relativeDifference, diagnostic).toBeLessThan(.0001)
+  expect(Math.abs(result.gainRatio - 1), diagnostic).toBeLessThan(.0001)
 })
 
 test('no-op updates do not restart the initial fade or an in-progress control ramp', async ({ page }) => {
@@ -508,6 +515,7 @@ test('no-op updates do not restart the initial fade or an in-progress control ra
     return { maximumDifference, noOpSchedules: updated.noOpSchedules }
   }, defaults)
   expect(result.noOpSchedules).toBe(0)
-  // Separate offline render threads can differ by a few float32 rounding bits.
-  expect(result.maximumDifference).toBeLessThan(.000001)
+  // Zero scheduling calls is exact. PCM permits platform render rounding up
+  // to -100 dBFS peak; restarting the initial fade creates a much larger error.
+  expect(result.maximumDifference, JSON.stringify(result)).toBeLessThan(.00001)
 })

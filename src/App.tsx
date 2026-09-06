@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import {
   ArrowsInSimple, ArrowsOutSimple, ArrowCounterClockwise, ArrowUpRight,
@@ -7,7 +7,7 @@ import {
 import { AmbientEngine } from './audio';
 import type { AtmosphereId, SoundIdentity, SoundSettings } from './audio';
 import AtmosphereScene from './AtmosphereScene';
-import { atmospheres, soundControls, synthControls } from './presets';
+import { atmospheres, layerControls, soundControls, synthControls } from './presets';
 import { generateVariation, SOUND_PRESETS } from './sound-presets';
 import type { SoundPresetId } from './sound-presets';
 import { loadCurrent, loadSaved, saveCurrent, savePlaces, SAVED_KEY } from './storage';
@@ -80,7 +80,9 @@ function SoundMeter({ engine, playing }: { engine: AmbientEngine | null; playing
 
 function App() {
   const [current, setCurrent] = useState(loadCurrent);
-  const { atmosphere, settings, identity } = current;
+  const { atmosphere, identity } = current;
+  const soundPreset = SOUND_PRESETS.find(p => p.id === identity.preset) ?? SOUND_PRESETS[0];
+  const settings = useMemo(() => ({ ...soundPreset.settings, ...current.settings }), [soundPreset, current.settings]);
   const [saved, setSaved] = useState(loadSaved);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -96,7 +98,6 @@ function App() {
   const engineRef = useRef<AmbientEngine | null>(null);
   const restoreFocus = useRef<HTMLButtonElement>(null);
   const preMute = useRef(settings.volume || .5);
-  const soundPreset = SOUND_PRESETS.find(p => p.id === identity.preset) ?? SOUND_PRESETS[0];
 
   useEffect(() => {
     const syncSaved = (event: StorageEvent) => { if (event.key === SAVED_KEY || event.key === null) setSaved(loadSaved()); };
@@ -107,7 +108,7 @@ function App() {
   useEffect(() => () => { void engineRef.current?.dispose(); engineRef.current = null; }, []);
   useEffect(() => {
     engineRef.current?.update(settings);
-    if (!saveCurrent(current)) setNotice('Browser storage is unavailable. Your changes will last for this visit.');
+    if (!saveCurrent({ ...current, settings })) setNotice('Browser storage is unavailable. Your changes will last for this visit.');
   }, [current, settings]);
   useEffect(() => {
     if (!playing) return;
@@ -290,6 +291,17 @@ function App() {
             </div>
             {studioOpen && <div id="synth-panel" className="synth-panel">
               <div className="mb-6 flex flex-wrap items-center justify-between gap-2"><p className="eyebrow">INSIDE THE SOUND</p><span className="variation-id">VARIATION {identity.seed.toString(16).padStart(8, '0').toUpperCase()}</span></div>
+              <div className="layer-mixer">
+                <p className="synth-section-label mb-5">Four layers, moving at their own pace.</p>
+                <div className="advanced-grid grid grid-cols-2 gap-x-8 gap-y-7 xl:grid-cols-4">
+                  {layerControls.map(control => <div className="sound-control" key={control.key}>
+                    <div className="mb-3 flex items-center justify-between"><label htmlFor={control.key}>{control.label}</label><output htmlFor={control.key}>{Math.round(settings[control.key] * 100).toString().padStart(2, '0')}</output></div>
+                    <input id={control.key} type="range" min="0" max="100" step="1" value={Math.round(settings[control.key] * 100)} onChange={e => changeSetting(control.key, Number(e.target.value) / 100)} aria-describedby={`${control.key}-help`} style={{ '--fill': `${settings[control.key] * 100}%` } as CSSProperties} />
+                    <div className="range-endpoints mt-2 flex justify-between" aria-hidden="true"><span>{control.low}</span><span>{control.high}</span></div>
+                    <p className="synth-description mt-3" id={`${control.key}-help`}>{control.description}</p>
+                  </div>)}
+                </div>
+              </div>
               <div className="advanced-grid grid grid-cols-2 gap-x-8 gap-y-7 xl:grid-cols-4">
                 {synthControls.map(control => <div className="sound-control" key={control.key}>
                   <div className="mb-3 flex items-center justify-between"><label htmlFor={control.key}>{control.label}</label><output htmlFor={control.key}>{Math.round(settings[control.key] * 100).toString().padStart(2, '0')}</output></div>

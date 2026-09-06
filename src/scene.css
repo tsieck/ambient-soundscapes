@@ -1,5 +1,5 @@
 .atmosphere-scene {
-  position: absolute;
+  position: fixed;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
@@ -8,11 +8,8 @@
   contain: strict;
 }
 
-.scene-landscape,
+.scene-photo,
 .scene-weather,
-.scene-grain,
-.scene-vignette,
-.scene-reading-shade,
 .scene-darkness {
   position: absolute;
   inset: 0;
@@ -20,67 +17,29 @@
   height: 100%;
 }
 
-.scene-landscape {
+.scene-photo {
   display: block;
+  object-fit: cover;
+  object-position: center;
   transition: opacity 1.8s ease;
 }
 
-.scene-landscape--city { opacity: 1; }
-.scene-landscape--afternoon { opacity: 0; }
-
-.atmosphere-scene[data-atmosphere='afternoon'] .scene-landscape--city { opacity: 0; }
-.atmosphere-scene[data-atmosphere='afternoon'] .scene-landscape--afternoon { opacity: 1; }
-
-.scene-reading-shade {
-  background: linear-gradient(90deg, rgb(10 26 21 / 38%), rgb(10 26 21 / 15%) 43%, transparent 73%);
-}
+.scene-photo--city { opacity: 1; }
+.scene-photo--afternoon { opacity: 0; }
+.atmosphere-scene[data-atmosphere='afternoon'] .scene-photo--city { opacity: 0; }
+.atmosphere-scene[data-atmosphere='afternoon'] .scene-photo--afternoon { opacity: 1; }
 
 .scene-darkness {
-  background: #0e1a16;
-  opacity: var(--scene-darkness, 0.16);
-  transition: opacity 0.5s ease;
-}
-
-.scene-grain {
-  opacity: 0.12;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23fff' filter='url(%23n)' opacity='.42' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
-  mix-blend-mode: soft-light;
-}
-
-.scene-vignette {
-  background: linear-gradient(180deg, rgb(8 24 18 / 17%), transparent 26%, transparent 59%, rgb(8 22 17 / 34%) 100%), radial-gradient(ellipse at 60% 42%, transparent 35%, rgb(10 25 18 / 23%) 100%);
-}
-
-.scene-haze {
-  animation: scene-haze-drift var(--scene-duration, 110s) ease-in-out infinite alternate;
-  transform-origin: center;
-}
-
-.atmosphere-scene[data-playing='false'] .scene-haze { animation-play-state: paused; }
-
-@keyframes scene-haze-drift {
-  from { transform: translateX(-12px); opacity: 0.8; }
-  to { transform: translateX(28px); opacity: 1; }
+  background: #091710;
+  opacity: var(--scene-darkness, 0.08);
+  transition: opacity 0.8s ease;
 }
 
 @media (max-width: 700px) {
-  .scene-landscape {
-    width: 180%;
-    max-width: none;
-    left: -68%;
-  }
-
-  .scene-reading-shade {
-    background: linear-gradient(180deg, rgb(10 26 21 / 24%), transparent 56%), linear-gradient(90deg, rgb(10 26 21 / 19%), transparent 100%);
-  }
-
-  .scene-vignette {
-    background: linear-gradient(180deg, rgb(8 24 18 / 10%), transparent 40%, rgb(8 22 17 / 38%) 100%);
-  }
+  .scene-photo--city { object-position: 67% center; }
+  .scene-photo--afternoon { object-position: 62% center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scene-haze { animation: none; }
-  .scene-landscape { transition-duration: 0.15s; }
+  .scene-photo { transition-duration: 0.15s; }
 }

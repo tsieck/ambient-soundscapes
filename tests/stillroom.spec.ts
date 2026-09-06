@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { CurrentPlace } from '../src/storage';
+import { SOUND_PRESETS } from '../src/sound-presets';
 
 type AudioProbe = Window & {
   __contexts: AudioContext[];
@@ -108,7 +109,7 @@ test('live controls and landscapes preserve the running sound graph without rest
   const starts = await page.evaluate(() => (window as unknown as AudioProbe).__sourceStarts);
   const identity = (await currentPlace(page)).identity;
   expect(starts).toBeGreaterThan(0);
-  for (const name of ['Warmth', 'Darkness', 'Movement', 'Rain', 'Master volume', 'Space', 'Density', 'Drift', 'Harmony']) {
+  for (const name of ['Warmth', 'Darkness', 'Movement', 'Rain', 'Master volume', 'Space', 'Density', 'Drift', 'Harmony', 'Foundation', 'Chords', 'Details', 'Texture']) {
     await page.getByLabel(name, { exact: true }).press('End');
     await expect(page.getByRole('button', { name: 'Pause soundscape' })).toBeEnabled();
     expect(await page.evaluate(() => (window as unknown as AudioProbe).__sourceStarts)).toBe(starts);
@@ -180,6 +181,10 @@ test('saves full synth identity and advanced controls, persists them, restores a
   await page.getByLabel('Density', { exact: true }).press('Home');
   await page.getByLabel('Drift', { exact: true }).press('End');
   await page.getByLabel('Harmony', { exact: true }).press('Home');
+  await page.getByLabel('Foundation', { exact: true }).press('Home');
+  await page.getByLabel('Chords', { exact: true }).press('End');
+  await page.getByLabel('Details', { exact: true }).press('Home');
+  await page.getByLabel('Texture', { exact: true }).press('End');
   const savedSound = await currentPlace(page);
   await page.getByRole('button', { name: 'Save this place', exact: true }).click();
   await page.getByLabel('Name your place').fill('My quiet afternoon');
@@ -197,7 +202,7 @@ test('saves full synth identity and advanced controls, persists them, restores a
   await expect(page.getByRole('heading', { name: 'Glass garden' })).toBeVisible();
   expect(await currentPlace(page)).toEqual(savedSound);
   await page.getByRole('button', { name: 'Open the synth', exact: true }).click();
-  for (const [name, value] of Object.entries({ Warmth: '0', Rain: '100', Space: '100', Density: '0', Drift: '100', Harmony: '0' })) {
+  for (const [name, value] of Object.entries({ Warmth: '0', Rain: '100', Space: '100', Density: '0', Drift: '100', Harmony: '0', Foundation: '0', Chords: '100', Details: '0', Texture: '100' })) {
     await expect(page.getByLabel(name, { exact: true })).toHaveValue(value);
   }
   await page.getByRole('button', { name: /Saved places/ }).click();
@@ -234,9 +239,9 @@ test('older saved atmospheres gain a synth identity without losing their origina
   const migrated = await currentPlace(page);
   expect(migrated.identity).toEqual({ preset: 'tape', seed: 7103 });
   expect(migrated.settings).toMatchObject({ warmth: .31, darkness: .41, movement: .51, rain: .11, volume: .61 });
-  for (const key of ['space', 'density', 'drift', 'tension'] as const) {
-    expect(migrated.settings[key]).toBeGreaterThanOrEqual(0);
-    expect(migrated.settings[key]).toBeLessThanOrEqual(1);
+  const tapeDefaults = SOUND_PRESETS.find(preset => preset.id === 'tape')!.settings;
+  for (const key of ['space', 'density', 'drift', 'tension', 'bedLevel', 'padLevel', 'detailLevel', 'textureLevel'] as const) {
+    expect(migrated.settings[key]).toBe(tapeDefaults[key]);
   }
   await chooseSound(page, 'Glass garden');
   await page.getByRole('button', { name: /Saved places/ }).click();
@@ -305,13 +310,36 @@ test('Space toggles listening and Escape exits focus view from its focused butto
   await expect(page.getByRole('button', { name: 'Just listen', exact: true })).toBeFocused();
 });
 
+test('both photographic backgrounds decode and stay fixed behind the scrolling controls', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  const scene = page.locator('.atmosphere-scene');
+  const city = page.locator('.scene-photo--city');
+  const afternoon = page.locator('.scene-photo--afternoon');
+  for (const [photo, file] of [[city, 'rainy-city.jpg'], [afternoon, 'faded-afternoon.jpg']] as const) {
+    await expect(photo).toHaveAttribute('src', new RegExp(`/backgrounds/${file}$`));
+    await expect.poll(() => photo.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 500)).toBe(true);
+    await expect(photo).toHaveCSS('object-fit', 'cover');
+  }
+  await expect(scene.locator('svg')).toHaveCount(0);
+  await expect(city).toHaveCSS('opacity', '1');
+  await page.getByRole('button', { name: /Faded afternoon/ }).click();
+  await expect(scene).toHaveAttribute('data-atmosphere', 'afternoon');
+  await expect(afternoon).toHaveCSS('opacity', '1');
+  await expect(city).toHaveCSS('opacity', '0');
+  await page.getByRole('button', { name: 'Open the synth', exact: true }).click();
+  await page.getByLabel('Texture', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(scene).toHaveCSS('position', 'fixed');
+  expect(await scene.boundingBox()).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
+});
+
 for (const width of [320, 390, 768]) {
   test(`fits a ${width}px viewport and keeps all visible buttons named`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Just listen', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Open the synth', exact: true }).click();
-    for (const name of ['Warmth', 'Darkness', 'Movement', 'Rain', 'Master volume', 'Space', 'Density', 'Drift', 'Harmony']) {
+    for (const name of ['Warmth', 'Darkness', 'Movement', 'Rain', 'Master volume', 'Space', 'Density', 'Drift', 'Harmony', 'Foundation', 'Chords', 'Details', 'Texture']) {
       await expect(page.getByLabel(name, { exact: true })).toBeVisible();
     }
     for (const button of await page.getByRole('button').all()) {

@@ -4,6 +4,7 @@ import type { AtmosphereId, SoundSettings } from '../src/audio'
 const defaults: SoundSettings = {
   warmth: 0.6, darkness: 0.5, movement: 0.35, rain: 0.4, volume: 0.6,
   space: 0.65, density: 0.5, drift: 0.35, tension: 0.35,
+  bedLevel: .55, padLevel: .75, detailLevel: .5, textureLevel: .3,
 }
 
 test.beforeEach(async ({ page }) => {
@@ -23,8 +24,8 @@ for (const id of ['city', 'afternoon'] as AtmosphereId[]) {
       const readings = []
       for (const settings of [
         defaults,
-        { ...defaults, warmth: 1, darkness: 0, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1 },
-        { ...defaults, warmth: 1, darkness: 1, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1 },
+        { ...defaults, warmth: 1, darkness: 0, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1 },
+        { ...defaults, warmth: 1, darkness: 1, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1 },
       ]) {
         const sampleRate = 24000
         const context = new OfflineAudioContext(2, sampleRate * 14, sampleRate)
@@ -141,7 +142,7 @@ test('rapid switching and pause/play races release sources and preserve the late
       await new Promise((resolve) => setTimeout(resolve, 6200))
       const afterSwitch = liveSources.size
       const beforeSettings = liveSources.size
-      engine.update({ warmth: .8, darkness: .2, movement: .65, rain: .2, volume: .55, space: .8, density: .8, drift: .6, tension: .6 })
+      engine.update({ ...settings, warmth: .8, darkness: .2, movement: .65, rain: .2, volume: .55, space: .8, density: .8, drift: .6, tension: .6, bedLevel: .8, padLevel: .7, detailLevel: .9, textureLevel: .7 })
       engine.setAtmosphere('afternoon', settings, { preset: 'tape', seed: 29 })
       const afterSettings = liveSources.size
       const pendingPause = engine.pause()
@@ -222,6 +223,7 @@ test('all ten presets render, and seeds and profiles change the actual audio', a
     }
     return { readings, repeatDifference: difference(repeated), seedDifference: difference(differentSeed), profileDifference: difference(differentProfile) }
   }, defaults)
+  await test.info().attach('preset-audio-metrics', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
   expect(result.readings).toHaveLength(10)
   for (const reading of result.readings) {
     expect(reading.invalid, reading.id).toBe(0)
@@ -241,7 +243,7 @@ test('a long render changes bass harmony and stays finite without musical gaps',
     const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
     const rate = 16000
     const context = new OfflineAudioContext(2, rate * 150, rate)
-    const sound = createSoundscape(context, 'city', { ...settings, movement: .95, density: .75, rain: 0, volume: 1 }, context.destination, { preset: 'bloom', seed: 8127 })
+    const sound = createSoundscape(context, 'city', { ...settings, movement: .95, density: .75, rain: 0, volume: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1 }, context.destination, { preset: 'bloom', seed: 8127 })
     const buffer = await context.startRendering()
     sound.stop()
     const samples = buffer.getChannelData(0)
@@ -270,6 +272,7 @@ test('a long render changes bass harmony and stays finite without musical gaps',
     }
     return { peak, invalid, bassNotes, levels }
   }, defaults)
+  await test.info().attach('long-render-audio-metrics', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
   expect(result.invalid).toBe(0)
   expect(result.peak).toBeLessThan(.95)
   expect(new Set(result.bassNotes).size).toBeGreaterThan(1)
@@ -330,4 +333,181 @@ test('musical sliders preserve the current phrase with and without cancelAndHold
     expect(reading.beforeDifference).toBeLessThan(.00001)
     expect(reading.afterDifference).toBeGreaterThan(.001)
   }
+})
+
+test('four solo layers are audible and detail figures leave intentional rests', async ({ page }) => {
+  const result = await page.evaluate(async (settings) => {
+    const moduleUrl = '/src/audio.ts'
+    const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
+    const rate = 16000
+    const readings = []
+    const silence = { ...settings, movement: .25, density: .65, rain: 0, space: 0, volume: .7,
+      bedLevel: 0, padLevel: 0, detailLevel: 0, textureLevel: 0 }
+    for (const layer of ['bedLevel', 'padLevel', 'detailLevel', 'textureLevel', 'none'] as const) {
+      const controls = layer === 'none' ? silence : { ...silence, [layer]: 1 }
+      const context = new OfflineAudioContext(2, rate * 60, rate)
+      const sound = createSoundscape(context, 'city', controls, context.destination, { preset: 'tape', seed: 4217 })
+      const buffer = await context.startRendering()
+      sound.stop()
+      const samples = buffer.getChannelData(0)
+      let peak = 0, energy = 0
+      const windows = []
+      for (const sample of samples) { peak = Math.max(peak, Math.abs(sample)); energy += sample * sample }
+      for (let second = 5; second < 55; second++) {
+        let windowEnergy = 0
+        for (let index = second * rate; index < (second + 1) * rate; index++) windowEnergy += samples[index] ** 2
+        windows.push(Math.sqrt(windowEnergy / rate))
+      }
+      readings.push({ layer, peak, rms: Math.sqrt(energy / samples.length), quietest: Math.min(...windows), loudest: Math.max(...windows) })
+    }
+    return readings
+  }, defaults)
+  await test.info().attach('layer-audio-metrics', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
+  for (const reading of result) {
+    expect(reading.peak, reading.layer).toBeLessThan(.95)
+    if (reading.layer === 'none') expect(reading.peak).toBe(0)
+    else expect(reading.rms, reading.layer).toBeGreaterThan(.002)
+  }
+  const details = result.find((reading) => reading.layer === 'detailLevel')!
+  const foundation = result.find((reading) => reading.layer === 'bedLevel')!
+  expect(details.quietest).toBeLessThan(details.loudest * .025)
+  expect(foundation.quietest).toBeGreaterThan(.003)
+})
+
+test('glass keys produce measured FM sidebands unlike the warm harmonic voice', async ({ page }) => {
+  const result = await page.evaluate(async (settings) => {
+    const moduleUrl = '/src/audio.ts'
+    const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
+    const rate = 16000
+    const readings = []
+    for (const preset of ['glass', 'velvet'] as const) {
+      const context = new OfflineAudioContext(2, rate * 6, rate)
+      const factory = context.createOscillator.bind(context)
+      const firstNoteFrequencies: number[] = []
+      context.createOscillator = () => {
+        const oscillator = factory()
+        const set = oscillator.frequency.setValueAtTime.bind(oscillator.frequency)
+        oscillator.frequency.setValueAtTime = (frequency, time) => {
+          if (time > 2 && time < 3) firstNoteFrequencies.push(frequency)
+          return set(frequency, time)
+        }
+        return oscillator
+      }
+      const sound = createSoundscape(context, 'city', { ...settings, movement: .25, density: .5, darkness: 0, warmth: 0, drift: 0, rain: 0, space: 0,
+        bedLevel: 0, padLevel: 0, detailLevel: 1, textureLevel: 0 }, context.destination, { preset, seed: 4217 })
+      const buffer = await context.startRendering()
+      sound.stop()
+      const samples = buffer.getChannelData(0)
+      const fundamental = Math.min(...firstNoteFrequencies)
+      const powerAt = (frequency: number) => {
+        const coefficient = 2 * Math.cos(2 * Math.PI * frequency / rate)
+        let previous = 0, previousPrevious = 0
+        for (let index = Math.floor(rate * 2.45); index < Math.floor(rate * 3.6); index++) {
+          const current = samples[index] + coefficient * previous - previousPrevious
+          previousPrevious = previous; previous = current
+        }
+        return previous ** 2 + previousPrevious ** 2 - coefficient * previous * previousPrevious
+      }
+      readings.push({ preset, fundamental,
+        sidebandRatio: (powerAt(fundamental * 1.71) + powerAt(fundamental * 3.71)) / powerAt(fundamental),
+      })
+    }
+    return readings
+  }, defaults)
+  await test.info().attach('fm-spectrum-metrics', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
+  const glass = result.find((reading) => reading.preset === 'glass')!
+  const velvet = result.find((reading) => reading.preset === 'velvet')!
+  expect(glass.fundamental).toBeGreaterThan(100)
+  expect(glass.sidebandRatio).toBeGreaterThan(.01)
+  expect(glass.sidebandRatio).toBeGreaterThan(velvet.sidebandRatio * 8)
+})
+
+test('space drags do not re-amplify sound already decaying in the effects', async ({ page }) => {
+  const result = await page.evaluate(async (settings) => {
+    const moduleUrl = '/src/audio.ts'
+    const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
+    const rate = 24000
+    async function render(changeSpace: boolean) {
+      const context = new OfflineAudioContext(2, rate * 14, rate)
+      const initial = { ...settings, rain: 0, space: .2, bedLevel: 0, padLevel: 0, detailLevel: 1, textureLevel: 0 }
+      const silentInput = { ...initial, detailLevel: 0 }
+      const sound = createSoundscape(context, 'city', initial, context.destination, { preset: 'tape', seed: 4217 })
+      const stopInput = context.suspend(5)
+      const adjustments = Array.from({ length: 80 }, (_, index) => context.suspend(8 + index * .025))
+      const rendering = context.startRendering()
+      await stopInput
+      sound.update(silentInput)
+      await context.resume()
+      for (let index = 0; index < adjustments.length; index++) {
+        await adjustments[index]
+        if (changeSpace) sound.update({ ...silentInput, space: .5 + Math.sin(index * .47) * .49 })
+        await context.resume()
+      }
+      const buffer = await rendering
+      sound.stop()
+      return buffer.getChannelData(0)
+    }
+    const reference = await render(false)
+    const changed = await render(true)
+    let referenceEnergy = 0, changedEnergy = 0, differenceEnergy = 0
+    for (let index = rate * 8; index < changed.length; index++) {
+      referenceEnergy += reference[index] ** 2
+      changedEnergy += changed[index] ** 2
+      differenceEnergy += (reference[index] - changed[index]) ** 2
+    }
+    return {
+      tailRms: Math.sqrt(referenceEnergy / (rate * 6)),
+      gainRatio: Math.sqrt(changedEnergy / referenceEnergy),
+      relativeDifference: Math.sqrt(differenceEnergy / referenceEnergy),
+    }
+  }, defaults)
+  expect(result.tailRms).toBeGreaterThan(0.0000001)
+  expect(result.relativeDifference, JSON.stringify(result)).toBeLessThan(.00001)
+})
+
+test('no-op updates do not restart the initial fade or an in-progress control ramp', async ({ page }) => {
+  const result = await page.evaluate(async (settings) => {
+    const moduleUrl = '/src/audio.ts'
+    const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
+    const rate = 16000
+    async function render(extraUpdates: boolean) {
+      const context = new OfflineAudioContext(2, rate * 9, rate)
+      let current = { ...settings, rain: 0 }
+      const sound = createSoundscape(context, 'city', current, context.destination, { preset: 'velvet', seed: 4217 })
+      const times = [.25, .6, 5, 5.2, 5.8, 6.5]
+      const suspensions = times.map((time) => context.suspend(time))
+      const rendering = context.startRendering()
+      let noOpSchedules = 0
+      for (let index = 0; index < times.length; index++) {
+        await suspensions[index]
+        if (times[index] === 5) {
+          current = { ...current, warmth: .95 }
+          sound.update(current)
+        } else if (extraUpdates) {
+          const methods = ['setValueAtTime', 'linearRampToValueAtTime', 'cancelScheduledValues', 'cancelAndHoldAtTime'] as const
+          const restore = methods.map((method) => {
+            const original = AudioParam.prototype[method]
+            Object.defineProperty(AudioParam.prototype, method, {
+              configurable: true, writable: true,
+              value(this: AudioParam, ...args: number[]) { noOpSchedules++; return Reflect.apply(original, this, args) },
+            })
+            return () => Object.defineProperty(AudioParam.prototype, method, { configurable: true, writable: true, value: original })
+          })
+          try { sound.update({ ...current }) } finally { restore.forEach((reset) => reset()) }
+        }
+        await context.resume()
+      }
+      const buffer = await rendering
+      sound.stop()
+      return { samples: buffer.getChannelData(0), noOpSchedules }
+    }
+    const reference = await render(false)
+    const updated = await render(true)
+    let maximumDifference = 0
+    for (let index = 0; index < reference.samples.length; index++) maximumDifference = Math.max(maximumDifference, Math.abs(reference.samples[index] - updated.samples[index]))
+    return { maximumDifference, noOpSchedules: updated.noOpSchedules }
+  }, defaults)
+  expect(result.noOpSchedules).toBe(0)
+  // Separate offline render threads can differ by a few float32 rounding bits.
+  expect(result.maximumDifference).toBeLessThan(.000001)
 })

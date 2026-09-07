@@ -144,7 +144,16 @@ test('rapid switching and pause/play races release sources and preserve the late
         engine.setSound({ preset: index % 2 === 0 ? 'glass' : 'tape', seed: index }, settings)
       }
       const duringSwitch = liveSources.size
-      await new Promise((resolve) => setTimeout(resolve, 6200))
+      // Two queued crossfades follow the audio clock, and their ended callbacks
+      // may arrive later on a busy runner. Observe cleanup instead of assuming
+      // that 6.2 seconds of wall time always includes both callbacks.
+      const switchStarted = performance.now()
+      const switchAudioStarted = engine.getAnalyser()!.context.currentTime
+      while (liveSources.size !== oneSceneSources && performance.now() - switchStarted < 20_000) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      const switchWaitMs = performance.now() - switchStarted
+      const switchAudioSeconds = engine.getAnalyser()!.context.currentTime - switchAudioStarted
       const afterSwitch = liveSources.size
       const beforeSettings = liveSources.size
       engine.update({ ...settings, warmth: .8, darkness: .2, movement: .65, rain: .2, volume: .55, space: .8, density: .8, drift: .6, tension: .6, bedLevel: .8, padLevel: .7, detailLevel: .9, textureLevel: .7 })
@@ -164,7 +173,7 @@ test('rapid switching and pause/play races release sources and preserve the late
       await engine.dispose()
       return {
         initialState, initialAnalyser,
-        oneSceneSources, duringSwitch, afterSwitch, beforeSettings, afterSettings,
+        oneSceneSources, duringSwitch, afterSwitch, beforeSettings, afterSettings, switchWaitMs, switchAudioSeconds,
         resumed, paused, afterPause,
         disposed: engine.getContextState(),
         afterDispose: liveSources.size,
@@ -179,7 +188,7 @@ test('rapid switching and pause/play races release sources and preserve the late
   expect(result.initialAnalyser).toBeNull()
   expect(result.oneSceneSources).toBeGreaterThan(0)
   expect(result.duringSwitch).toBeLessThanOrEqual(result.oneSceneSources * 2 + 1)
-  expect(result.afterSwitch).toBe(result.oneSceneSources)
+  expect(result.afterSwitch, JSON.stringify(result)).toBe(result.oneSceneSources)
   expect(result.afterSettings).toBe(result.beforeSettings)
   expect(result.resumed).toBe('running')
   expect(result.paused).toBe('suspended')

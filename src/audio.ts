@@ -156,7 +156,7 @@ interface Palette {
   air: number
   brightness: number
   wow: number
-  pad: 'subtractive' | 'bowed' | 'organ' | 'fm'
+  pad: 'subtractive' | 'bowed' | 'organ' | 'fm' | 'brass'
   detail: 'fm' | 'electric' | 'pluck' | 'bowed'
   ratio: number
   index: number
@@ -178,6 +178,10 @@ const PALETTES: Record<SoundPresetId, Palette> = {
   tide: { partials: [1,.3,.16,.08,.04,.018], modes: [DORIAN,MAJOR], attack: 10, noteAttack: 4.4, noteLength: 18, air: 1.2, brightness: .9, wow: .85, pad: 'bowed', detail: 'bowed', ratio: 1, index: .5, motif: [0,4,2,1] },
   mist: { partials: [1,.06,0,.025], modes: [MAJOR,DORIAN], attack: 10, noteAttack: 4.8, noteLength: 18, air: 2.6, brightness: .85, wow: .45, pad: 'organ', detail: 'bowed', ratio: 1, index: .5, motif: [0,2,4] },
   aurora: { partials: [1,.09,.19,.038,.072,.012], modes: [LYDIAN,DORIAN], attack: 8, noteAttack: .8, noteLength: 14, air: 1, brightness: 1.2, wow: .9, pad: 'fm', detail: 'fm', ratio: 1.998, index: 1.05, motif: [0,3,2,6] },
+  // Append palettes: their stable index is part of each saved musical seed.
+  neon: { partials: [1,.62,.42,.3,.23,.18,.14,.105,.08,.06,.045,.032], modes: [MINOR,DORIAN], attack: 7.2, noteAttack: .18, noteLength: 19, air: .8, brightness: 1.08, wow: .65, pad: 'brass', detail: 'fm', ratio: 2.414, index: 1.15, motif: [0,4,3,1] },
+  midnight: { partials: [1,.24,.15,.07,.033,.015,.009], modes: [DORIAN,MINOR], attack: 12, noteAttack: .85, noteLength: 17, air: 1.5, brightness: .82, wow: .65, pad: 'bowed', detail: 'pluck', ratio: 1, index: .5, motif: [0,4,1] },
+  afterglow: { partials: [1,.46,.31,.19,.13,.09,.063,.044,.03,.021], modes: [MAJOR,LYDIAN], attack: 9.5, noteAttack: .14, noteLength: 13, air: .65, brightness: 1.03, wow: 1.1, pad: 'brass', detail: 'electric', ratio: 1, index: 1.3, motif: [0,2,4,1] },
 }
 
 function normalizeIdentity(id: AtmosphereId, identity?: SoundIdentity): SoundIdentity {
@@ -197,7 +201,7 @@ interface Voice {
   tuning: { param: AudioParam; ratio: number }[]
   envelope: GainNode
   pan: StereoPannerNode
-  colors: { param: AudioParam; kind: 'filter' | 'fm'; amount: number }[]
+  colors: { param: AudioParam; kind: 'filter' | 'fm' | 'brass-lowpass' | 'brass-highpass'; amount: number }[]
   events: NoteEvent[]
   available: number
 }
@@ -378,7 +382,7 @@ export function createSoundscape(
 
   // A quiet, modulated stereo early-reflection path enriches bowed/subtractive
   // pads without adding more unison oscillators to each note.
-  const chorusAmount = gain(palette.pad === 'bowed' ? .25 : palette.pad === 'subtractive' ? .15 : .06)
+  const chorusAmount = gain(palette.pad === 'bowed' ? .25 : palette.pad === 'brass' ? .2 : palette.pad === 'subtractive' ? .15 : .06)
   for (const side of [-1, 1]) {
     const chorusDelay = keep(context.createDelay(.1)); chorusDelay.delayTime.value = .019 + side * .003
     const chorusMod = gain(.0018)
@@ -439,9 +443,18 @@ export function createSoundscape(
     }
 
     const isDetail = layer === 'detail'
+    const brass = layer === 'pad' && palette.pad === 'brass'
     const fm = isDetail ? palette.detail === 'fm' || palette.detail === 'electric' : layer === 'pad' && palette.pad === 'fm'
-    const tone = filter('lowpass', 4000, layer === 'pad' && palette.pad === 'subtractive' ? .65 : .45)
-    if (breath) colorMotion(breath, tone.detune, 320)
+    const tone = filter('lowpass', 4000, brass ? 1.05 : layer === 'pad' && palette.pad === 'subtractive' ? .65 : .45)
+    // A serial high-pass/low-pass pair gives brass a rounded body and a nasal
+    // opening. The bed bypasses it. The two existing oscillators and the same
+    // independent breath clock supply the voice; no extra sources are needed.
+    const toneInput = brass ? filter('highpass', 90, .55) : tone
+    if (brass) {
+      toneInput.connect(tone)
+      voice.colors.push({ param: toneInput.frequency, kind: 'brass-highpass', amount: .85 })
+    }
+    if (breath) colorMotion(breath, tone.detune, brass ? 480 : 320)
     tone.connect(envelope)
     if (fm) {
       const carrier = keep(context.createOscillator()), modulator = keep(context.createOscillator())
@@ -466,16 +479,16 @@ export function createSoundscape(
           : layer === 'pad' && layerIndex === 1 ? shadowPadWave : padWave)
         if (layer === 'bed' && layerIndex === 0) oscillator.type = 'sine'
         else oscillator.setPeriodicWave(wave)
-        oscillator.detune.value = (layerIndex === 0 ? -1 : 1) * (.5 + characterRandom() * (palette.pad === 'bowed' ? 3 : 1.5))
+        oscillator.detune.value = (layerIndex === 0 ? -1 : 1) * (.5 + characterRandom() * (brass ? 4 : palette.pad === 'bowed' ? 3 : 1.5))
         const level = gain(layer === 'bed' ? (layerIndex === 0 ? .8 : .2) : .5)
         // Complementary gains keep the pair's total weight constant. This
         // moves the spectral balance, rather than applying blanket tremolo.
         if (breath) colorMotion(breath, level.gain, layerIndex === 0 ? .24 : -.24)
-        oscillator.connect(level).connect(tone)
+        oscillator.connect(level).connect(toneInput)
         voice.tuning.push({ param: oscillator.frequency, ratio: 1 })
         slowDrift.connect(oscillator.detune); tapeWow.connect(oscillator.detune); start(oscillator)
       }
-      voice.colors.push({ param: tone.frequency, kind: 'filter', amount: layer === 'bed' ? 3 : palette.pad === 'organ' ? 7 : 4.8 })
+      voice.colors.push({ param: tone.frequency, kind: brass ? 'brass-lowpass' : 'filter', amount: brass ? 9 : layer === 'bed' ? 3 : palette.pad === 'organ' ? 7 : 4.8 })
     }
     return voice
   }
@@ -506,9 +519,10 @@ export function createSoundscape(
     if (!voice) return
     const keyed = voice.layer === 'detail'
     const texture = voice.layer === 'texture'
+    const brass = voice.layer === 'pad' && palette.pad === 'brass'
     const first = composition.phrase === 0
     const attack = keyed ? Math.min(length * .3, palette.noteAttack * (.85 + random() * .3))
-      : Math.min(length * .27, (first ? (texture ? 3.5 : 2.4) : texture ? 8 : voice.layer === 'bed' ? 5 : palette.attack) * (.85 + random() * .3))
+      : Math.min(length * .27, (first ? (texture ? 3.5 : brass ? 4.2 : 2.4) : texture ? 8 : voice.layer === 'bed' ? 5 : palette.attack) * (.85 + random() * .3))
     const end = time + length
     const points: EnvelopePoint[] = keyed ? [
       { time, value: 0 }, { time: time + attack, value: amplitude },
@@ -524,6 +538,24 @@ export function createSoundscape(
     const randomPan = (random() * 2 - 1) * spread
     voice.pan.pan.setValueAtTime(position ?? randomPan, time)
     for (const color of voice.colors) {
+      if (color.kind === 'brass-lowpass' || color.kind === 'brass-highpass') {
+        const lowpass = color.kind === 'brass-lowpass'
+        const peak = Math.min(7600, fundamental * color.amount * (.65 + spectral * .65))
+        const base = lowpass ? Math.max(130, fundamental * .85) : fundamental * .35
+        // Brightness blooms after the amplitude arrival, like leaning into a
+        // held key. Both filters follow this one gesture, with a gentle second
+        // breath before the release. Own every endpoint so live score edits
+        // can restore a ringing note's complete articulation unchanged.
+        curves.push({ param: color.param, points: [
+          { time, value: base },
+          { time: time + attack, value: base + (peak - base) * .36 },
+          { time: time + Math.min(length * .38, attack + length * .14), value: peak },
+          { time: time + length * .55, value: base + (peak - base) * .48 },
+          { time: time + length * .72, value: base + (peak - base) * .68 },
+          { time: end, value: base },
+        ] })
+        continue
+      }
       const peak = color.kind === 'fm' ? fundamental * color.amount * spectral
         : Math.min(7600, fundamental * color.amount * (.65 + spectral * .65))
       const base = color.kind === 'fm' ? peak * (keyed ? .08 : .22) : Math.max(160, peak * .3)

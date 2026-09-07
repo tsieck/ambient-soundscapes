@@ -273,7 +273,7 @@ function App() {
       {!immersive && <>
         <main className="main-stage flex flex-1 items-center">
           <div className="atmosphere-heading">
-            <button className="preset-opener eyebrow mb-5 flex items-center gap-3" onClick={() => setDialog('sounds')} disabled={busy} aria-label="Choose sound preset"><span className="small-line" />GENERATIVE AMBIENT<span className="preset-count">10 PRESETS</span><CaretDown size={12} /></button>
+            <button className="preset-opener eyebrow mb-5 flex items-center gap-3" onClick={() => setDialog('sounds')} disabled={busy} aria-label="Choose sound preset"><span className="small-line" />GENERATIVE AMBIENT<span className="preset-count">{SOUND_PRESETS.length} PRESETS</span><CaretDown size={12} /></button>
             <h1>{soundPreset.name}</h1>
             <p className="atmosphere-description mt-5">{soundPreset.description}</p>
             <div className="listen-actions mt-8 flex flex-wrap items-center gap-3 md:mt-9">
@@ -393,7 +393,7 @@ function App() {
     <div className={`toast ${notice ? 'visible' : ''}`} role="status">{notice}</div>
 
     {dialog === 'sounds' && <Dialog wide title="Find your sound" onClose={() => setDialog(null)}>
-      <p className="dialog-note mb-6">Ten starting points. Each has its own voice, harmony, and way of moving. Try a new variation to wander further.</p>
+      <p className="dialog-note mb-6">Each starting point has its own voice, harmony, and way of moving. Try a new variation to wander further.</p>
       <div className="sound-library grid grid-cols-1 gap-2 sm:grid-cols-2">
         {SOUND_PRESETS.map((sound, index) => <button className={`sound-preset-option ${identity.preset === sound.id ? 'selected' : ''}`} key={sound.id} disabled={busy} aria-pressed={identity.preset === sound.id} onClick={() => chooseSound(sound.id)}>
           <div className="mb-3 flex items-center justify-between"><span className="sound-index">{(index + 1).toString().padStart(2, '0')}</span>{identity.preset === sound.id ? <Check size={14} /> : <span className={`timbre-mark timbre-${sound.id}`} aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span>}</div>

@@ -3,7 +3,8 @@ import { RHYTHM_DEFAULTS } from './rhythm';
 
 export type SoundPresetId =
   | 'velvet' | 'tape' | 'glass' | 'orbit' | 'bloom'
-  | 'horizon' | 'ember' | 'tide' | 'mist' | 'aurora';
+  | 'horizon' | 'ember' | 'tide' | 'mist' | 'aurora'
+  | 'neon' | 'midnight' | 'afterglow';
 
 export interface SoundIdentity {
   preset: SoundPresetId;
@@ -78,6 +79,24 @@ export const SOUND_PRESETS: SoundPreset[] = [
     settings: { ...RHYTHM_DEFAULTS, warmth: .26, darkness: .37, movement: .58, rain: .01, volume: .5, space: .91, density: .61, drift: .52, tension: .43,
       bedLevel: .34, padLevel: .64, detailLevel: .72, textureLevel: .44 },
   },
+  {
+    id: 'neon', name: 'Neon skyline',
+    description: 'Swelling synth brass and distant glass notes above deep bass.',
+    settings: { ...RHYTHM_DEFAULTS, warmth: .76, darkness: .48, movement: .4, rain: .32, volume: .5, space: .88, density: .4, drift: .5, tension: .55,
+      bedLevel: .64, padLevel: .84, detailLevel: .32, textureLevel: .3 },
+  },
+  {
+    id: 'midnight', name: 'Midnight sea',
+    description: 'Deep bowed swells and sparse, rounded notes over moving air.',
+    settings: { ...RHYTHM_DEFAULTS, warmth: .48, darkness: .69, movement: .5, rain: .34, volume: .5, space: .9, density: .3, drift: .36, tension: .28,
+      bedLevel: .58, padLevel: .78, detailLevel: .16, textureLevel: .62 },
+  },
+  {
+    id: 'afterglow', name: 'Last light',
+    description: 'Warm brass chords and soft electric keys lingering in open space.',
+    settings: { ...RHYTHM_DEFAULTS, warmth: .84, darkness: .32, movement: .35, rain: .03, volume: .5, space: .72, density: .38, drift: .4, tension: .27,
+      bedLevel: .42, padLevel: .74, detailLevel: .52, textureLevel: .2 },
+  },
 ];
 
 interface VariationProfile {
@@ -100,6 +119,9 @@ const profiles: Record<SoundPresetId, VariationProfile> = {
   tide: { tone: .12, motion: .15, texture: .15, rain: .13, layers: [.14, .1, .1, .14] },
   mist: { tone: .1, motion: .09, texture: .11, rain: .1, layers: [.1, .1, .12, .12] },
   aurora: { tone: .11, motion: .16, texture: .13, rain: .025, layers: [.12, .12, .14, .14] },
+  neon: { tone: .1, motion: .12, texture: .11, rain: .1, layers: [.12, .08, .1, .12] },
+  midnight: { tone: .09, motion: .11, texture: .1, rain: .12, layers: [.12, .08, .08, .12] },
+  afterglow: { tone: .08, motion: .1, texture: .11, rain: .025, layers: [.1, .1, .12, .1] },
 };
 
 function seededRandom(seed: number) {
@@ -131,7 +153,7 @@ export function generateVariation(
       warmth: vary(base.warmth, profile.tone),
       darkness: vary(base.darkness, profile.tone),
       movement: vary(base.movement, profile.motion),
-      rain: vary(base.rain, profile.rain, preset.id === 'tide' || preset.id === 'mist' ? .65 : .12),
+      rain: vary(base.rain, profile.rain, ['tide', 'mist', 'neon', 'midnight'].includes(preset.id) ? .65 : .12),
       volume: .5,
       space: vary(base.space, profile.texture),
       density: vary(base.density, profile.texture),

@@ -197,7 +197,7 @@ test('rapid switching and pause/play races release sources and preserve the late
   expect(result.afterDispose).toBe(0)
 })
 
-test('all ten presets render, and seeds and profiles change the actual audio', async ({ page }) => {
+test('all thirteen presets render, and seeds and profiles change the actual audio', async ({ page }) => {
   const result = await page.evaluate(async (settings) => {
     const audioUrl = '/src/audio.ts'
     const presetUrl = '/src/sound-presets.ts'
@@ -238,7 +238,7 @@ test('all ten presets render, and seeds and profiles change the actual audio', a
     return { readings, repeatDifference: difference(repeated), seedDifference: difference(differentSeed), profileDifference: difference(differentProfile) }
   }, defaults)
   await test.info().attach('preset-audio-metrics', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
-  expect(result.readings).toHaveLength(10)
+  expect(result.readings).toHaveLength(13)
   for (const reading of result.readings) {
     expect(reading.invalid, reading.id).toBe(0)
     expect(reading.peak, reading.id).toBeLessThan(.95)

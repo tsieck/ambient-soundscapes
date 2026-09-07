@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 import type { AtmosphereId, SoundSettings } from '../src/audio'
 
+// Several checks synthesize multiple minutes of audio in each comparison.
+// Shared CI runners need more render time than the UI's 30-second deadline.
+test.setTimeout(60_000)
+
 const defaults: SoundSettings = {
   warmth: 0.6, darkness: 0.5, movement: 0.35, rain: 0.4, volume: 0.6,
   space: 0.65, density: 0.5, drift: 0.35, tension: 0.35,

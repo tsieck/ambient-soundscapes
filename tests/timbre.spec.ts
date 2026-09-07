@@ -16,6 +16,8 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('Movement changes the color of an already-held pad without a new attack or a blanket gain jump', async ({ page }) => {
+  // Four 40-second native renders; this is a signal check, not a speed benchmark.
+  test.setTimeout(60_000)
   const readings = await page.evaluate(async (settings) => {
     const moduleUrl = '/src/audio.ts'
     const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')

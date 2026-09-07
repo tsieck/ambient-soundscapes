@@ -93,6 +93,8 @@ test('the felt key loses its brighter strike while the rounded body remains audi
       const onset = Math.min(...entrances.map((entry) => entry.time))
       const fundamental = Math.min(...entrances.map((entry) => entry.frequency))
       const spectrum = (age: number) => {
+        // Resolve the brief attack separately from its decay, using many
+        // fundamental periods even for the lowest note in this seed set.
         const start = Math.round((onset + age) * rate), length = Math.round(.15 * rate)
         const powerAt = (frequency: number) => {
           const coefficient = 2 * Math.cos(2 * Math.PI * frequency / rate)

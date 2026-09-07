@@ -123,6 +123,8 @@ test('live controls and landscapes preserve the running sound graph without rest
 });
 
 test('ten sound presets set defaults while scenery, volume, and rain remain independent', async ({ page }) => {
+  expect(SOUND_PRESETS).toHaveLength(10);
+  expect(SOUND_PRESETS.every(preset => preset.settings.pulse === 0 && preset.settings.binaural === 0)).toBe(true);
   await page.goto('/');
   await page.getByLabel('Master volume').press('End');
   await page.getByLabel('Rain', { exact: true }).press('End');
@@ -169,6 +171,43 @@ test('variations change synth identity and parameters, with undo preserving curr
   await expect(page.getByText(`VARIATION ${original.identity.seed.toString(16).padStart(8, '0').toUpperCase()}`)).toBeVisible();
 });
 
+test('rhythm shortcuts are keyboard accessible and rhythm choices survive presets and variations', async ({ page }) => {
+  await observeAudio(page);
+  await page.goto('/');
+  const rhythm = page.getByRole('group', { name: 'Rhythm', exact: true });
+  await expect(rhythm.getByRole('button', { name: 'Floating', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await rhythm.getByRole('button', { name: 'Pulse', exact: true }).focus();
+  await page.keyboard.press('Space');
+  await expect(rhythm.getByRole('button', { name: 'Pulse', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect((await currentPlace(page)).settings).toMatchObject({ pulse: .5, bounce: 0, tempo: .4, binaural: 0, beatRate: .4 });
+  expect(await page.evaluate(() => (window as unknown as AudioProbe).__contexts.length)).toBe(0);
+  await rhythm.getByRole('button', { name: 'Bounce', exact: true }).click();
+  await expect(rhythm.getByRole('button', { name: 'Bounce', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Open the synth', exact: true }).click();
+  await page.getByLabel('Pace', { exact: true }).press('End');
+  await page.getByLabel('Headphone beat', { exact: true }).press('End');
+  await page.getByLabel('Beat rate', { exact: true }).press('Home');
+  await expect(page.getByLabel('Pace', { exact: true })).toHaveAttribute('aria-valuetext', '108 beats per minute');
+  await expect(page.getByLabel('Beat rate', { exact: true })).toHaveAttribute('aria-valuetext', '2 hertz');
+  await expect(page.locator('output[for="tempo"]')).toHaveText('108 BPM');
+  await expect(page.locator('output[for="beatRate"]')).toHaveText('2 Hz');
+  await expect(page.getByText(/Use stereo headphones to hear the effect/)).toBeVisible();
+  const chosenRhythm = { pulse: .65, tempo: 1, bounce: .7, binaural: 1, beatRate: 0 };
+  await chooseSound(page, 'Open horizon');
+  expect((await currentPlace(page)).settings).toMatchObject(chosenRhythm);
+  const original = await currentPlace(page);
+  await page.getByRole('button', { name: 'New variation', exact: true }).click();
+  expect((await currentPlace(page)).settings).toMatchObject(chosenRhythm);
+  await rhythm.getByRole('button', { name: 'Floating', exact: true }).click();
+  expect((await currentPlace(page)).settings).toMatchObject({ ...chosenRhythm, pulse: 0 });
+  await page.getByRole('button', { name: 'Previous variation', exact: true }).click();
+  expect(await currentPlace(page)).toEqual(original);
+  await expect(rhythm.getByRole('button', { name: 'Bounce', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  expect((await currentPlace(page)).settings).toMatchObject({ pulse: 0, tempo: .4, bounce: .35, binaural: 0, beatRate: .4 });
+  await expect(rhythm.getByRole('button', { name: 'Floating', exact: true })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('saves full synth identity and advanced controls, persists them, restores and deletes the place', async ({ page }) => {
   await page.goto('/');
   await chooseSound(page, 'Glass garden');
@@ -185,6 +224,11 @@ test('saves full synth identity and advanced controls, persists them, restores a
   await page.getByLabel('Chords', { exact: true }).press('End');
   await page.getByLabel('Details', { exact: true }).press('Home');
   await page.getByLabel('Texture', { exact: true }).press('End');
+  await page.getByLabel('Pulse amount', { exact: true }).press('End');
+  await page.getByLabel('Pace', { exact: true }).press('End');
+  await page.getByLabel('Bounce', { exact: true }).press('End');
+  await page.getByLabel('Headphone beat', { exact: true }).press('End');
+  await page.getByLabel('Beat rate', { exact: true }).press('Home');
   const savedSound = await currentPlace(page);
   await page.getByRole('button', { name: 'Save this place', exact: true }).click();
   await page.getByLabel('Name your place').fill('My quiet afternoon');
@@ -195,6 +239,7 @@ test('saves full synth identity and advanced controls, persists them, restores a
   await expect(page.getByRole('heading', { name: 'Glass garden' })).toBeVisible();
   expect(await currentPlace(page)).toEqual(savedSound);
   await chooseSound(page, 'Ember glow');
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await page.getByRole('button', { name: /Rainy city/ }).click();
   await page.getByLabel('Master volume').press('End');
   await page.getByRole('button', { name: /Saved places/ }).click();
@@ -202,7 +247,7 @@ test('saves full synth identity and advanced controls, persists them, restores a
   await expect(page.getByRole('heading', { name: 'Glass garden' })).toBeVisible();
   expect(await currentPlace(page)).toEqual(savedSound);
   await page.getByRole('button', { name: 'Open the synth', exact: true }).click();
-  for (const [name, value] of Object.entries({ Warmth: '0', Rain: '100', Space: '100', Density: '0', Drift: '100', Harmony: '0', Foundation: '0', Chords: '100', Details: '0', Texture: '100' })) {
+  for (const [name, value] of Object.entries({ Warmth: '0', Rain: '100', Space: '100', Density: '0', Drift: '100', Harmony: '0', Foundation: '0', Chords: '100', Details: '0', Texture: '100', 'Pulse amount': '100', Pace: '100', Bounce: '100', 'Headphone beat': '100', 'Beat rate': '0' })) {
     await expect(page.getByLabel(name, { exact: true })).toHaveValue(value);
   }
   await page.getByRole('button', { name: /Saved places/ }).click();
@@ -240,7 +285,7 @@ test('older saved atmospheres gain a synth identity without losing their origina
   expect(migrated.identity).toEqual({ preset: 'tape', seed: 7103 });
   expect(migrated.settings).toMatchObject({ warmth: .31, darkness: .41, movement: .51, rain: .11, volume: .61 });
   const tapeDefaults = SOUND_PRESETS.find(preset => preset.id === 'tape')!.settings;
-  for (const key of ['space', 'density', 'drift', 'tension', 'bedLevel', 'padLevel', 'detailLevel', 'textureLevel'] as const) {
+  for (const key of ['space', 'density', 'drift', 'tension', 'bedLevel', 'padLevel', 'detailLevel', 'textureLevel', 'pulse', 'tempo', 'bounce', 'binaural', 'beatRate'] as const) {
     expect(migrated.settings[key]).toBe(tapeDefaults[key]);
   }
   await chooseSound(page, 'Glass garden');
@@ -339,7 +384,7 @@ for (const width of [320, 390, 768]) {
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Just listen', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Open the synth', exact: true }).click();
-    for (const name of ['Warmth', 'Darkness', 'Movement', 'Rain', 'Master volume', 'Space', 'Density', 'Drift', 'Harmony', 'Foundation', 'Chords', 'Details', 'Texture']) {
+    for (const name of ['Warmth', 'Darkness', 'Movement', 'Rain', 'Master volume', 'Space', 'Density', 'Drift', 'Harmony', 'Foundation', 'Chords', 'Details', 'Texture', 'Pulse amount', 'Pace', 'Bounce', 'Headphone beat', 'Beat rate']) {
       await expect(page.getByLabel(name, { exact: true })).toBeVisible();
     }
     for (const button of await page.getByRole('button').all()) {

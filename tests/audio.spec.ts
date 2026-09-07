@@ -5,6 +5,7 @@ const defaults: SoundSettings = {
   warmth: 0.6, darkness: 0.5, movement: 0.35, rain: 0.4, volume: 0.6,
   space: 0.65, density: 0.5, drift: 0.35, tension: 0.35,
   bedLevel: .55, padLevel: .75, detailLevel: .5, textureLevel: .3,
+  pulse: 0, tempo: .4, bounce: .35, binaural: 0, beatRate: .4,
 }
 
 test.beforeEach(async ({ page }) => {
@@ -24,8 +25,8 @@ for (const id of ['city', 'afternoon'] as AtmosphereId[]) {
       const readings = []
       for (const settings of [
         defaults,
-        { ...defaults, warmth: 1, darkness: 0, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1 },
-        { ...defaults, warmth: 1, darkness: 1, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1 },
+        { ...defaults, warmth: 1, darkness: 0, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1, pulse: 1, tempo: 1, bounce: 1, binaural: 1, beatRate: 1 },
+        { ...defaults, warmth: 1, darkness: 1, movement: 1, rain: 1, volume: 1, space: 1, density: 1, drift: 1, tension: 1, bedLevel: 1, padLevel: 1, detailLevel: 1, textureLevel: 1, pulse: 1, tempo: 1, bounce: 1, binaural: 1, beatRate: 1 },
       ]) {
         const sampleRate = 24000
         const context = new OfflineAudioContext(2, sampleRate * 14, sampleRate)
@@ -67,7 +68,7 @@ for (const id of ['city', 'afternoon'] as AtmosphereId[]) {
   })
 }
 
-test('moving volume to zero produces exact silence after its fade', async ({ page }) => {
+test('moving volume to zero silences music, pulse, rain, and headphone beat after its fade', async ({ page }) => {
   const result = await page.evaluate(async (settings) => {
     const moduleUrl = '/src/audio.ts'
     const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
@@ -93,7 +94,7 @@ test('moving volume to zero produces exact silence after its fade', async ({ pag
     }
     sound.stop()
     return { before, after }
-  }, defaults)
+  }, { ...defaults, pulse: .8, binaural: .7 })
   expect(result.before).toBeGreaterThan(0.02)
   expect(result.after).toBe(0)
 })
@@ -301,6 +302,9 @@ test('musical sliders preserve the current phrase with and without cancelAndHold
       }
       const sound = createSoundscape(context, 'city', controls, context.destination, { preset: 'velvet', seed: 4217 })
       const before = created
+      // Only observe replanning caused by the edit; headphone initialization
+      // also initializes its frequency smoothing at time zero.
+      cancellationTimes.length = 0
       const suspended = context.suspend(10)
       const rendering = context.startRendering()
       await suspended
@@ -518,4 +522,42 @@ test('no-op updates do not restart the initial fade or an in-progress control ra
   // Zero scheduling calls is exact. PCM permits platform render rounding up
   // to -100 dBFS peak; restarting the initial fade creates a much larger error.
   expect(result.maximumDifference, JSON.stringify(result)).toBeLessThan(.00001)
+})
+
+test('using pulse and headphone controls leaves the underlying ambient performance intact', async ({ page }) => {
+  const result = await page.evaluate(async (settings) => {
+    const moduleUrl = '/src/audio.ts'
+    const { createSoundscape } = await import(moduleUrl) as typeof import('../src/audio')
+    const rate = 16000
+    const initial = { ...settings, rain: 0, movement: .6 }
+    async function render(edit: boolean) {
+      const context = new OfflineAudioContext(2, rate * 130, rate)
+      const sound = createSoundscape(context, 'city', initial, context.destination, { preset: 'tape', seed: 4217 })
+      const times = [5, 15, 25]
+      const suspensions = times.map((time) => context.suspend(time))
+      const rendering = context.startRendering()
+      for (let index = 0; index < times.length; index++) {
+        await suspensions[index]
+        if (edit) sound.update(index === 2 ? initial : { ...initial,
+          pulse: .8, tempo: index === 0 ? .4 : 1, bounce: index === 0 ? .8 : .3,
+          binaural: .6, beatRate: .8,
+        })
+        await context.resume()
+      }
+      const buffer = await rendering
+      sound.stop()
+      return buffer.getChannelData(0)
+    }
+    const baseline = await render(false), changed = await render(true)
+    const difference = (start: number, end: number) => {
+      let sum = 0
+      for (let i = start * rate; i < end * rate; i++) sum += (baseline[i] - changed[i]) ** 2
+      return Math.sqrt(sum / ((end - start) * rate))
+    }
+    return { active: difference(10, 22), settled: difference(55, 130) }
+  }, defaults)
+  expect(result.active).toBeGreaterThan(.005)
+  // After the extra layers and their room tails have faded, the same seeded
+  // ambient performance must remain, including later harmonic decisions.
+  expect(result.settled).toBeLessThan(.000001)
 })

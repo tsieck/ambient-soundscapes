@@ -129,6 +129,15 @@ input[type=range]::-moz-range-thumb { width: 10px; height: 10px; border: 0; bord
 .variation-id { color: var(--faint); font-size: 8px; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
 .synth-description { color: var(--muted); font-size: 10px; line-height: 1.65; max-width: 190px; }
 .synth-footnote { color: var(--faint); font-size: 10px; line-height: 1.8; max-width: 650px; }
+.rhythm-options { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 24px; background: #10251f32; }
+.rhythm-option { min-height: 34px; padding: 7px 14px; border-radius: 20px; color: var(--muted); font-size: 11px; }
+.rhythm-option:hover { color: #edf1e3; background: #c8d7bb0c; }
+.rhythm-option[aria-pressed=true] { background: #c8d7bb1c; color: #e9eedf; }
+.rhythm-help { max-width: none; }
+.rhythm-mixer { padding-top: 26px; margin-top: 26px; border-top: 1px solid var(--border); }
+.rhythm-control output { flex-shrink: 0; white-space: nowrap; }
+.rhythm-control label { line-height: 1.4; }
+.headphone-mixer .synth-description { max-width: 270px; }
 .wide-dialog { width: min(660px, calc(100vw - 32px)); }
 .sound-preset-option { text-align: left; padding: 17px; border: 1px solid #b7c5a82a; border-radius: 8px; min-height: 124px; background: #b8caaa03; color: #d7e1ca; }
 .sound-preset-option:hover { border-color: #c5d4b367; background: #b8caaa0b; }

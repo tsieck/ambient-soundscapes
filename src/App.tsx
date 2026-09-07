@@ -7,13 +7,34 @@ import {
 import { AmbientEngine } from './audio';
 import type { AtmosphereId, SoundIdentity, SoundSettings } from './audio';
 import AtmosphereScene from './AtmosphereScene';
-import { atmospheres, layerControls, soundControls, synthControls } from './presets';
+import { atmospheres, headphoneControls, layerControls, pulseControls, soundControls, synthControls } from './presets';
+import { beatRateToHz, tempoToBpm } from './rhythm';
 import { generateVariation, SOUND_PRESETS } from './sound-presets';
 import type { SoundPresetId } from './sound-presets';
 import { loadCurrent, loadSaved, saveCurrent, savePlaces, SAVED_KEY } from './storage';
 import type { CurrentPlace, Place } from './storage';
 
 const dialogOpeners = new WeakMap<HTMLDialogElement, HTMLElement | null>();
+
+function RhythmControl({ control, value, onChange }: {
+  control: (typeof pulseControls)[number] | (typeof headphoneControls)[number];
+  value: number;
+  onChange: (key: keyof SoundSettings, value: number) => void;
+}) {
+  const display = control.key === 'tempo' ? `${Math.round(tempoToBpm(value))} BPM`
+    : control.key === 'beatRate' ? `${Number(beatRateToHz(value).toFixed(1))} Hz`
+      : value === 0 && (control.key === 'pulse' || control.key === 'binaural') ? 'Off' : `${Math.round(value * 100)}%`;
+  const accessibleValue = control.key === 'tempo' ? `${Math.round(tempoToBpm(value))} beats per minute`
+    : control.key === 'beatRate' ? `${Number(beatRateToHz(value).toFixed(1))} hertz` : display;
+  return <div className="sound-control rhythm-control">
+    <div className="mb-3 flex items-center justify-between gap-2"><label htmlFor={control.key}>{control.label}</label><output htmlFor={control.key}>{display}</output></div>
+    <input id={control.key} type="range" min="0" max="100" step="1" value={Math.round(value * 100)}
+      onChange={e => onChange(control.key, Number(e.target.value) / 100)} aria-valuetext={accessibleValue}
+      aria-describedby={`${control.key}-help`} style={{ '--fill': `${value * 100}%` } as CSSProperties} />
+    <div className="range-endpoints mt-2 flex justify-between" aria-hidden="true"><span>{control.low}</span><span>{control.high}</span></div>
+    <p className="synth-description mt-3" id={`${control.key}-help`}>{control.description}</p>
+  </div>;
+}
 
 function Dialog({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -176,13 +197,24 @@ function App() {
   };
   const chooseSound = (id: SoundPresetId) => {
     const selected = SOUND_PRESETS.find(p => p.id === id)!;
-    applySound({ preset: id, seed: newSeed() }, { ...selected.settings, volume: settings.volume, rain: settings.rain });
+    applySound({ preset: id, seed: newSeed() }, preserveListeningSettings(selected.settings));
     setDialog(null);
   };
+  const preserveListeningSettings = (next: SoundSettings): SoundSettings => ({
+    ...next, volume: settings.volume, rain: settings.rain,
+    pulse: settings.pulse, tempo: settings.tempo, bounce: settings.bounce,
+    binaural: settings.binaural, beatRate: settings.beatRate,
+  });
   const randomize = () => {
     const variation = generateVariation(identity.preset, newSeed());
-    applySound(variation.identity, { ...variation.settings, volume: settings.volume, rain: settings.rain });
+    applySound(variation.identity, preserveListeningSettings(variation.settings));
     setNotice(`A new variation of ${soundPreset.name.toLowerCase()}.`);
+  };
+  const rhythmMode = settings.pulse === 0 ? 'floating' : settings.bounce > .35 ? 'bounce' : 'pulse';
+  const chooseRhythm = (mode: 'floating' | 'pulse' | 'bounce') => {
+    const next = mode === 'floating' ? { pulse: 0 } : mode === 'pulse' ? { pulse: .5, bounce: 0 } : { pulse: .65, bounce: .7 };
+    setCurrent(old => ({ ...old, settings: { ...old.settings, ...next } }));
+    setSavedName(null);
   };
   const previousVariation = () => {
     const prior = history[history.length - 1];
@@ -285,6 +317,16 @@ function App() {
                 <div className="range-endpoints mt-2 flex justify-between" aria-hidden="true"><span>{control.low}</span><span>{control.high}</span></div>
               </div>)}
             </div>
+            <div className="rhythm-row mt-6">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                <p className="eyebrow">RHYTHM</p>
+                <div className="rhythm-options" role="group" aria-label="Rhythm" aria-describedby="rhythm-help">
+                  {(['floating', 'pulse', 'bounce'] as const).map(mode => <button key={mode} className="rhythm-option" disabled={busy}
+                    aria-pressed={rhythmMode === mode} onClick={() => chooseRhythm(mode)}>{mode === 'floating' ? 'Floating' : mode === 'pulse' ? 'Pulse' : 'Bounce'}</button>)}
+                </div>
+              </div>
+              <p id="rhythm-help" className="synth-description mt-3 rhythm-help">Let it float, add a steady pulse, or give it a little bounce.</p>
+            </div>
             <div className="save-row mt-7 flex items-center justify-between gap-4">
               <button className={`studio-toggle flex items-center gap-2 ${studioOpen ? 'active' : ''}`} onClick={() => setStudioOpen(old => !old)} aria-expanded={studioOpen} aria-controls="synth-panel"><SlidersHorizontal size={15} />{studioOpen ? 'Close the synth' : 'Open the synth'}<CaretDown size={11} className={studioOpen ? 'rotate-180' : ''} /></button>
               <button className="save-button flex shrink-0 items-center gap-2" onClick={openSave}><Plus size={15} />Save this place</button>
@@ -310,7 +352,20 @@ function App() {
                   <p className="synth-description mt-3" id={`${control.key}-help`}>{control.description}</p>
                 </div>)}
               </div>
-              <p className="synth-footnote mt-6">Tone changes blend in as you play. Harmony and note density settle in with the next phrase. A new variation explores a new key, voicings, timing, and tone.</p>
+              <div className="rhythm-mixer">
+                <p className="synth-section-label mb-5">Give the sound a rhythm.</p>
+                <div className="advanced-grid grid grid-cols-2 gap-x-8 gap-y-7 xl:grid-cols-3">
+                  {pulseControls.map(control => <RhythmControl key={control.key} control={control} value={settings[control.key]} onChange={changeSetting} />)}
+                </div>
+              </div>
+              <div className="rhythm-mixer headphone-mixer">
+                <p className="synth-section-label">A separate beat, for headphones.</p>
+                <p className="synth-footnote mt-2 mb-5">A binaural beat uses slightly different tones in your left and right ears. Use stereo headphones to hear the effect. It has its own rate, separate from the rhythm above.</p>
+                <div className="advanced-grid grid grid-cols-2 gap-x-8 gap-y-7">
+                  {headphoneControls.map(control => <RhythmControl key={control.key} control={control} value={settings[control.key]} onChange={changeSetting} />)}
+                </div>
+              </div>
+              <p className="synth-footnote mt-6">Tone changes blend in as you play. Harmony and note density settle in with the next phrase. New variations and sound presets keep your rhythm and headphone beat settings.</p>
               {savedName && <span className="current-place-label mt-3"><Check size={13} />{savedName}</span>}
             </div>}
           </div>

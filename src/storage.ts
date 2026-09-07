@@ -9,6 +9,7 @@ export interface Place extends CurrentPlace { id: string; name: string }
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
 const basicKeys = ['warmth', 'darkness', 'movement', 'rain', 'volume'] as const;
 const advancedKeys = ['space', 'density', 'drift', 'tension', 'bedLevel', 'padLevel', 'detailLevel', 'textureLevel'] as const;
+const rhythmKeys = ['pulse', 'tempo', 'bounce', 'binaural', 'beatRate'] as const;
 const isLevel = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 
 /** Older saved atmospheres gain a synth identity without losing their settings. */
@@ -17,6 +18,7 @@ function readCurrent(v: unknown): CurrentPlace | null {
   const values = v.settings;
   if (!basicKeys.every(k => isLevel(values[k]))) return null;
   if (!advancedKeys.every(k => values[k] === undefined || isLevel(values[k]))) return null;
+  if (!rhythmKeys.every(k => values[k] === undefined || isLevel(values[k]))) return null;
   let identity: SoundIdentity = { preset: v.atmosphere === 'city' ? 'velvet' : 'tape', seed: 7103 };
   if (v.identity !== undefined) {
     const sound = v.identity;
@@ -26,7 +28,7 @@ function readCurrent(v: unknown): CurrentPlace | null {
     identity = { preset: sound.preset, seed: sound.seed } as SoundIdentity;
   }
   const defaults = { ...atmospheres[v.atmosphere].defaults, ...SOUND_PRESETS.find(p => p.id === identity.preset)!.settings };
-  const settings = Object.fromEntries([...basicKeys, ...advancedKeys].map(key => [key, values[key] ?? defaults[key]])) as unknown as SoundSettings;
+  const settings = Object.fromEntries([...basicKeys, ...advancedKeys, ...rhythmKeys].map(key => [key, values[key] ?? defaults[key]])) as unknown as SoundSettings;
   return { atmosphere: v.atmosphere, settings, identity };
 }
 

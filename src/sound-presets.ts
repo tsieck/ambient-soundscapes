@@ -1,4 +1,5 @@
 import type { SoundSettings } from './audio';
+import { RHYTHM_DEFAULTS } from './rhythm';
 
 export type SoundPresetId =
   | 'velvet' | 'tape' | 'glass' | 'orbit' | 'bloom'
@@ -20,61 +21,61 @@ export const SOUND_PRESETS: SoundPreset[] = [
   {
     id: 'velvet', name: 'Velvet room',
     description: 'Warm analog layers, softly opening and closing.',
-    settings: { warmth: .78, darkness: .56, movement: .24, rain: .02, volume: .5, space: .46, density: .52, drift: .25, tension: .12,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .78, darkness: .56, movement: .24, rain: .02, volume: .5, space: .46, density: .52, drift: .25, tension: .12,
       bedLevel: .64, padLevel: .82, detailLevel: .18, textureLevel: .14 },
   },
   {
     id: 'tape', name: 'Tape afternoon',
     description: 'Mellow electric keys with a worn, wandering warmth.',
-    settings: { warmth: .86, darkness: .34, movement: .37, rain: .02, volume: .5, space: .37, density: .44, drift: .72, tension: .2,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .86, darkness: .34, movement: .37, rain: .02, volume: .5, space: .37, density: .44, drift: .72, tension: .2,
       bedLevel: .4, padLevel: .44, detailLevel: .78, textureLevel: .26 },
   },
   {
     id: 'glass', name: 'Glass garden',
     description: 'Soft glass keys, clear tones dissolving into air.',
-    settings: { warmth: .29, darkness: .2, movement: .32, rain: 0, volume: .5, space: .78, density: .28, drift: .16, tension: .26,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .29, darkness: .2, movement: .32, rain: 0, volume: .5, space: .78, density: .28, drift: .16, tension: .26,
       bedLevel: .22, padLevel: .34, detailLevel: .8, textureLevel: .22 },
   },
   {
     id: 'orbit', name: 'Quiet orbit',
     description: 'Deep organ drones with sparse, distant pulses.',
-    settings: { warmth: .38, darkness: .8, movement: .28, rain: .02, volume: .5, space: .9, density: .38, drift: .4, tension: .38,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .38, darkness: .8, movement: .28, rain: .02, volume: .5, space: .9, density: .38, drift: .4, tension: .38,
       bedLevel: .86, padLevel: .55, detailLevel: .22, textureLevel: .2 },
   },
   {
     id: 'bloom', name: 'Slow bloom',
     description: 'Slowly bowed strings unfolding into warm harmony.',
-    settings: { warmth: .69, darkness: .31, movement: .55, rain: 0, volume: .5, space: .64, density: .69, drift: .28, tension: .16,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .69, darkness: .31, movement: .55, rain: 0, volume: .5, space: .64, density: .69, drift: .28, tension: .16,
       bedLevel: .4, padLevel: .88, detailLevel: .2, textureLevel: .3 },
   },
   {
     id: 'horizon', name: 'Open horizon',
     description: 'Open organ harmony and pure tones with room to breathe.',
-    settings: { warmth: .52, darkness: .25, movement: .35, rain: .03, volume: .5, space: .88, density: .35, drift: .3, tension: .1,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .52, darkness: .25, movement: .35, rain: .03, volume: .5, space: .88, density: .35, drift: .3, tension: .1,
       bedLevel: .46, padLevel: .72, detailLevel: .22, textureLevel: .18 },
   },
   {
     id: 'ember', name: 'Ember glow',
     description: 'Low, resonant analog tones glowing beneath the surface.',
-    settings: { warmth: .93, darkness: .76, movement: .16, rain: 0, volume: .5, space: .42, density: .57, drift: .19, tension: .14,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .93, darkness: .76, movement: .16, rain: 0, volume: .5, space: .42, density: .57, drift: .19, tension: .14,
       bedLevel: .84, padLevel: .62, detailLevel: .16, textureLevel: .2 },
   },
   {
     id: 'tide', name: 'Distant tide',
     description: 'Long harmonic swells through soft, shifting air.',
-    settings: { warmth: .51, darkness: .58, movement: .68, rain: .39, volume: .5, space: .76, density: .47, drift: .48, tension: .25,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .51, darkness: .58, movement: .68, rain: .39, volume: .5, space: .76, density: .47, drift: .48, tension: .25,
       bedLevel: .46, padLevel: .74, detailLevel: .18, textureLevel: .56 },
   },
   {
     id: 'mist', name: 'Morning mist',
     description: 'Drifting grains of sound with a few weightless tones.',
-    settings: { warmth: .58, darkness: .47, movement: .23, rain: .26, volume: .5, space: .84, density: .26, drift: .32, tension: .12,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .58, darkness: .47, movement: .23, rain: .26, volume: .5, space: .84, density: .26, drift: .32, tension: .12,
       bedLevel: .22, padLevel: .3, detailLevel: .26, textureLevel: .78 },
   },
   {
     id: 'aurora', name: 'Pale aurora',
     description: 'Luminous upper tones shimmering over cool harmony.',
-    settings: { warmth: .26, darkness: .37, movement: .58, rain: .01, volume: .5, space: .91, density: .61, drift: .52, tension: .43,
+    settings: { ...RHYTHM_DEFAULTS, warmth: .26, darkness: .37, movement: .58, rain: .01, volume: .5, space: .91, density: .61, drift: .52, tension: .43,
       bedLevel: .34, padLevel: .64, detailLevel: .72, textureLevel: .44 },
   },
 ];
@@ -126,6 +127,7 @@ export function generateVariation(
   return {
     identity: { preset: preset.id, seed: normalizedSeed },
     settings: {
+      ...RHYTHM_DEFAULTS,
       warmth: vary(base.warmth, profile.tone),
       darkness: vary(base.darkness, profile.tone),
       movement: vary(base.movement, profile.motion),

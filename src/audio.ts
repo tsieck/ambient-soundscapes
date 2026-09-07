@@ -1,4 +1,6 @@
 import type { SoundIdentity, SoundPresetId } from './sound-presets'
+import { createRhythm, RHYTHM_DEFAULTS } from './rhythm'
+import { createRoomImpulse } from './room'
 export type { SoundIdentity, SoundPresetId } from './sound-presets'
 
 export type AtmosphereId = 'city' | 'afternoon'
@@ -17,6 +19,11 @@ export interface SoundSettings {
   padLevel: number
   detailLevel: number
   textureLevel: number
+  pulse: number
+  tempo: number
+  bounce: number
+  binaural: number
+  beatRate: number
 }
 
 export interface Soundscape {
@@ -28,6 +35,7 @@ export interface Soundscape {
 const TAU = Math.PI * 2
 const CROSSFADE = 2.8
 const DEFAULTS: SoundSettings = {
+  ...RHYTHM_DEFAULTS,
   warmth: 0.6,
   darkness: 0.5,
   movement: 0.35,
@@ -90,20 +98,14 @@ function getBuffers(context: BaseAudioContext): SceneBuffers {
   const cached = buffers.get(context)
   if (cached) return cached
   const sampleRate = context.sampleRate
-  const impulse = context.createBuffer(2, Math.ceil(sampleRate * 5.7), sampleRate)
+  const impulse = createRoomImpulse(context)
   const rain = context.createBuffer(2, Math.ceil(sampleRate * 17.391), sampleRate)
   const patter = context.createBuffer(2, Math.ceil(sampleRate * 23.717), sampleRate)
 
   for (let channel = 0; channel < 2; channel++) {
     const random = seededRandom(48371 + channel * 9719)
-    const response = impulse.getChannelData(channel)
-    let diffuse = 0
-    for (let i = 0; i < response.length; i++) {
-      const time = i / sampleRate
-      diffuse = diffuse * 0.68 + (random() * 2 - 1) * 0.32
-      const onset = Math.min(1, Math.max(0, (time - 0.025) / 0.09))
-      response[i] = diffuse * onset * Math.exp(-time / 1.05)
-    }
+    // Preserve the existing weather seed sequence when changing the room.
+    for (let i = 0; i < impulse.length; i++) random()
 
     const wash = rain.getChannelData(channel)
     let brown = 0
@@ -188,7 +190,7 @@ function normalizeIdentity(id: AtmosphereId, identity?: SoundIdentity): SoundIde
 
 interface EnvelopePoint { time: number; value: number }
 interface AutomationCurve { param: AudioParam; points: EnvelopePoint[] }
-interface NoteEvent { start: number; end: number; curves: AutomationCurve[] }
+interface NoteEvent { midi: number; start: number; end: number; curves: AutomationCurve[] }
 type Layer = 'bed' | 'pad' | 'detail' | 'texture'
 interface Voice {
   layer: Layer
@@ -207,14 +209,38 @@ interface Chapter {
   details: number
   texture: number
 }
+interface MelodicStrand {
+  next: number
+  origin: number
+  homePan: number
+  position: number
+  cycle: number
+  spacing: number
+  figureCycle: number
+  figureSpacing: number
+  figureMotif: number[]
+  figureLevel: number
+  figureSpectral: number
+  figurePan: number
+  figureStart: number
+  prepared: boolean
+  active: boolean
+  degree: number
+  count: number
+  lastMidi: number
+  turns: number
+}
 interface Composition {
   degree: number
+  dwell: number
   phrase: number
   chapter: Chapter
   voicing: number[]
   motif: number[]
   lastBass: number
-  lastDetail: number
+  focusUntil: number
+  focusStrand: number
+  strands: MelodicStrand[]
 }
 interface ScoreCheckpoint { time: number; randomState: number; composition: Composition }
 
@@ -255,12 +281,25 @@ export function createSoundscape(
   const motifRotation = Math.floor(characterRandom() * palette.motif.length)
   const originalMotif = [...palette.motif.slice(motifRotation), ...palette.motif.slice(0, motifRotation)]
   let composition: Composition = {
-    degree: 0, phrase: 0,
+    degree: 0, dwell: Math.round((1 - value.movement) * 1.5), phrase: 0,
     chapter: { kind: 0, remaining: 3 + Math.floor(characterRandom() * 2), register: 0, spectral: .9, details: .95, texture: .75 },
-    voicing: [], motif: [...originalMotif], lastBass: root, lastDetail: root + 24,
+    voicing: [], motif: [...originalMotif], lastBass: root,
+    focusUntil: startedAt, focusStrand: -1,
+    strands: [0, 1].map((index) => ({
+      next: startedAt + (index === 0 ? 2.2 : 22 + characterRandom() * 7),
+      origin: startedAt, position: 0,
+      homePan: (index === 0 ? -.3 : .3) + (((musicalSeed >>> (index * 8)) & 255) / 255 - .5) * .12,
+      cycle: index === 0 ? 31.7 + characterRandom() * 9 : 47.3 + characterRandom() * 13,
+      spacing: 3.1 + characterRandom() * 1.3,
+      figureCycle: 0, figureSpacing: 0, figureMotif: [], figureLevel: 0, figureSpectral: 0,
+      figurePan: 0, figureStart: startedAt, prepared: false,
+      active: false, degree: 0,
+      count: 0, lastMidi: root + (index === 0 ? 24 : 19), turns: 0,
+    })),
   }
   const copyComposition = (state: Composition): Composition => ({
     ...state, chapter: { ...state.chapter }, voicing: [...state.voicing], motif: [...state.motif],
+    strands: state.strands.map((strand) => ({ ...strand, figureMotif: [...strand.figureMotif] })),
   })
 
   const keep = <T extends AudioNode>(node: T): T => { nodes.push(node); return node }
@@ -287,9 +326,22 @@ export function createSoundscape(
   const music = gain(1)
   const layerBus: Record<Layer, GainNode> = { bed: gain(1), pad: gain(1), detail: gain(1), texture: gain(1) }
   for (const bus of Object.values(layerBus)) bus.connect(music)
+  const pulseBus = gain(1)
+  pulseBus.connect(music)
   const lowpass = filter('lowpass', 2200)
   const body = filter('lowshelf', 280)
   const dry = gain(.94)
+  // Direct sound remains anchored. Different amounts of room identify the
+  // foreground, sustained ensemble and diffuse background without extra width
+  // modulation or a master-level swell.
+  const roomInput = gain(1)
+  const roomTone = filter('lowpass', 2200)
+  const roomBody = filter('lowshelf', 280)
+  const roomDepth: Record<Layer, number> = { bed: .24, pad: .92, detail: .52, texture: 1.25 }
+  for (const layer of Object.keys(layerBus) as Layer[]) {
+    layerBus[layer].connect(gain(roomDepth[layer])).connect(roomInput)
+  }
+  pulseBus.connect(gain(.36)).connect(roomInput)
   const reverbSend = gain(0)
   const reverb = keep(context.createConvolver()); reverb.buffer = scene.impulse
   const wet = gain(.3)
@@ -308,7 +360,7 @@ export function createSoundscape(
   const output = gain(0)
   music.connect(lowpass).connect(body)
   body.connect(dry).connect(mix)
-  body.connect(reverbSend).connect(reverb).connect(wetHighpass).connect(wetLowpass).connect(wet).connect(mix)
+  roomInput.connect(roomTone).connect(roomBody).connect(reverbSend).connect(reverb).connect(wetHighpass).connect(wetLowpass).connect(wet).connect(mix)
   // Echo comes primarily from articulated voices, preserving foundation clarity.
   layerBus.detail.connect(echoSend).connect(delay).connect(echoFilter).connect(echo).connect(mix)
   echoFilter.connect(feedback).connect(delay)
@@ -316,6 +368,7 @@ export function createSoundscape(
 
   const filterMovement = gain(150)
   lfo(.00713, characterRandom() * TAU).connect(filterMovement).connect(lowpass.detune)
+  filterMovement.connect(roomTone.detune)
   const slowDrift = gain(3)
   const tapeWow = gain(1)
   const panMovement = gain(.035)
@@ -334,14 +387,26 @@ export function createSoundscape(
     layerBus.pad.connect(chorusDelay).connect(chorusPan).connect(chorusAmount)
   }
   chorusAmount.connect(music)
+  chorusAmount.connect(roomInput)
 
   const harmonics = new Float32Array([0, ...palette.partials.map((partial) => partial * (.85 + characterRandom() * .3))])
   const padWave = context.createPeriodicWave(new Float32Array(harmonics.length), harmonics)
+  const shadowHarmonics = harmonics.map((partial, index) => partial * (index < 2 ? 1 : index % 2 ? .74 : .35))
+  const shadowPadWave = context.createPeriodicWave(new Float32Array(harmonics.length), shadowHarmonics)
   const roundWave = context.createPeriodicWave(new Float32Array(6), new Float32Array([0,1,.09,.055,.014,.005]))
   const bassWave = context.createPeriodicWave(new Float32Array(5), new Float32Array([0,1,.12,.04,.009]))
   const noise = keep(context.createBufferSource()); noise.buffer = scene.rain; noise.loop = true; start(noise)
   const grainOne = lfo(.4731, characterRandom() * TAU)
   const grainTwo = lfo(.7193, characterRandom() * TAU)
+  // Sound color has its own seeded sequence. Adding a motion source cannot
+  // change the musical vocabulary, timing or the rain's random sequence.
+  const timbreRandom = seededRandom(musicalSeed ^ 0x7ad513c9)
+  const timbreDepths: { node: GainNode; maximum: number }[] = []
+  function colorMotion(source: AudioNode, target: AudioParam, maximum: number) {
+    const depth = gain(0)
+    source.connect(depth).connect(target)
+    timbreDepths.push({ node: depth, maximum })
+  }
 
   function makeVoice(layer: Layer): Voice {
     const envelope = gain(0)
@@ -349,11 +414,16 @@ export function createSoundscape(
     envelope.connect(pan).connect(layerBus[layer])
     if (layer !== 'bed') panMovement.connect(pan.pan)
     const voice: Voice = { layer, envelope, pan, tuning: [], colors: [], events: [], available: startedAt }
+    // One slow clock per sustained voice. Stable fundamentals retain harmonic
+    // clarity while overtone balance and bandwidth unfold at different rates.
+    const breath = layer === 'pad' || layer === 'texture'
+      ? lfo(.0047 + timbreRandom() * .011, timbreRandom() * TAU) : null
     if (layer === 'texture') {
       // Windowed resonant-noise bands create a pitched spectral cloud. The
       // overlapping, unrelated grain rates avoid a fixed tremolo or noise loop.
       const grain = gain(.64)
-      const grainDepthA = gain(.2), grainDepthB = gain(.15)
+      const grainDepthA = gain(.12 + timbreRandom() * .1)
+      const grainDepthB = gain((timbreRandom() < .5 ? -1 : 1) * (.09 + timbreRandom() * .06))
       grainOne.connect(grainDepthA).connect(grain.gain)
       grainTwo.connect(grainDepthB).connect(grain.gain)
       for (const [ratio, level] of [[1,1], [2.003,.38], [3.997,.15]]) {
@@ -362,6 +432,7 @@ export function createSoundscape(
         noise.connect(band).connect(bandLevel).connect(grain)
         voice.tuning.push({ param: band.frequency, ratio })
         slowDrift.connect(band.detune)
+        colorMotion(breath!, band.Q, ratio === 1 ? 3.2 : -2.4)
       }
       grain.connect(envelope)
       return voice
@@ -370,12 +441,15 @@ export function createSoundscape(
     const isDetail = layer === 'detail'
     const fm = isDetail ? palette.detail === 'fm' || palette.detail === 'electric' : layer === 'pad' && palette.pad === 'fm'
     const tone = filter('lowpass', 4000, layer === 'pad' && palette.pad === 'subtractive' ? .65 : .45)
+    if (breath) colorMotion(breath, tone.detune, 320)
     tone.connect(envelope)
     if (fm) {
       const carrier = keep(context.createOscillator()), modulator = keep(context.createOscillator())
       carrier.type = 'sine'; modulator.type = 'sine'
       const index = gain(0)
-      modulator.connect(index).connect(carrier.frequency)
+      const evolvingIndex = gain(1)
+      modulator.connect(index).connect(evolvingIndex).connect(carrier.frequency)
+      if (breath) colorMotion(breath, evolvingIndex.gain, .3)
       carrier.connect(tone)
       const ratio = isDetail ? palette.ratio : 1.998
       voice.tuning.push({ param: carrier.frequency, ratio: 1 }, { param: modulator.frequency, ratio })
@@ -388,11 +462,15 @@ export function createSoundscape(
     } else {
       for (let layerIndex = 0; layerIndex < 2; layerIndex++) {
         const oscillator = keep(context.createOscillator())
-        const wave = layer === 'bed' ? bassWave : (isDetail && palette.detail !== 'bowed' ? roundWave : padWave)
+        const wave = layer === 'bed' ? bassWave : (isDetail && palette.detail !== 'bowed' ? roundWave
+          : layer === 'pad' && layerIndex === 1 ? shadowPadWave : padWave)
         if (layer === 'bed' && layerIndex === 0) oscillator.type = 'sine'
         else oscillator.setPeriodicWave(wave)
         oscillator.detune.value = (layerIndex === 0 ? -1 : 1) * (.5 + characterRandom() * (palette.pad === 'bowed' ? 3 : 1.5))
         const level = gain(layer === 'bed' ? (layerIndex === 0 ? .8 : .2) : .5)
+        // Complementary gains keep the pair's total weight constant. This
+        // moves the spectral balance, rather than applying blanket tremolo.
+        if (breath) colorMotion(breath, level.gain, layerIndex === 0 ? .24 : -.24)
         oscillator.connect(level).connect(tone)
         voice.tuning.push({ param: oscillator.frequency, ratio: 1 })
         slowDrift.connect(oscillator.detune); tapeWow.connect(oscillator.detune); start(oscillator)
@@ -423,7 +501,7 @@ export function createSoundscape(
   const scaleNote = (step: number) => root + scale[((step % 7) + 7) % 7] + Math.floor(step / 7) * 12
   const frequency = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
 
-  function putNote(pool: Voice[], midi: number, time: number, length: number, amplitude: number, spectral = 1) {
+  function putNote(pool: Voice[], midi: number, time: number, length: number, amplitude: number, spectral = 1, position?: number) {
     const voice = pool.find((candidate) => candidate.available <= time + .001)
     if (!voice) return
     const keyed = voice.layer === 'detail'
@@ -443,7 +521,8 @@ export function createSoundscape(
     const fundamental = frequency(midi)
     for (const tuning of voice.tuning) tuning.param.setValueAtTime(fundamental * tuning.ratio, time)
     const spread = voice.layer === 'bed' ? .12 : texture ? .8 : keyed ? .6 : .45
-    voice.pan.pan.setValueAtTime((random() * 2 - 1) * spread, time)
+    const randomPan = (random() * 2 - 1) * spread
+    voice.pan.pan.setValueAtTime(position ?? randomPan, time)
     for (const color of voice.colors) {
       const peak = color.kind === 'fm' ? fundamental * color.amount * spectral
         : Math.min(7600, fundamental * color.amount * (.65 + spectral * .65))
@@ -459,7 +538,7 @@ export function createSoundscape(
       curve.param.setValueAtTime(curve.points[0].value, time)
       for (const point of curve.points.slice(1)) curve.param.linearRampToValueAtTime(point.value, point.time)
     }
-    voice.events.push({ start: time, end, curves }); voice.available = end + .04
+    voice.events.push({ midi, start: time, end, curves }); voice.available = end + .04
   }
 
   function nextChapter() {
@@ -504,6 +583,74 @@ export function createSoundscape(
   }
 
   const progressions = [[5,3,4,1], [4,3,0,5], [5,3,0], [0,4,1,5], [0,5,3], [3,0,4,1], [0,3,5]]
+  function scheduleStrands(until: number, chordDegree: number) {
+    const chapter = composition.chapter
+    const pace = 1.2 - value.movement * .4
+    while (true) {
+      // Let each next gesture see what the ensemble has already begun. Sorting
+      // only after planning both complete strands cannot make them respond.
+      const strandIndex = composition.strands[0].next <= composition.strands[1].next ? 0 : 1
+      const strand = composition.strands[strandIndex]
+      if (strand.next >= until) break
+      if (strand.position === 0 && !strand.prepared) {
+        strand.origin = strand.next
+        strand.figureStart = strand.next
+        strand.degree = chordDegree
+        // Snapshot the complete gesture, including a deferred entrance. A live
+        // edit may affect the next figure, never rewrite a half-played contour.
+        strand.figureCycle = strand.cycle * pace
+        strand.figureSpacing = strand.spacing * pace
+        strand.figureMotif = [...composition.motif]
+        strand.figureLevel = (.06 + value.density * .029) * (strandIndex === 0 ? 1 : .58)
+        strand.figureSpectral = chapter.spectral * (strandIndex === 0 ? 1 : .72)
+        strand.figurePan = strand.homePan + (random() - .5) * .07
+        strand.count = Math.min(composition.motif.length,
+          strandIndex === 0 ? 2 + Math.round(value.density * 2) : 1 + Math.round(value.density))
+        strand.active = value.density > .035 && ((strandIndex === 0 && strand.turns === 0) ||
+          random() < chapter.details * (.45 + value.density * .55) * (strandIndex === 0 ? 1 : .68))
+        strand.prepared = true
+        if (strand.active) {
+          const articulation = (strand.count - 1) * strand.figureSpacing
+          const breathingRoom = 1.2 + (1 - value.density) * 2.4
+          const wait = composition.focusStrand !== strandIndex ? Math.max(0, composition.focusUntil - strand.next) : 0
+          // A reply can wait for the other player's contour while its original
+          // long cycle keeps running. If it cannot fit, omit this whole figure;
+          // never squeeze its notes together or accumulate timing drift.
+          const allowedWait = Math.min(18, strand.figureCycle - articulation - breathingRoom - 1)
+          if (wait > allowedWait) strand.active = false
+          else {
+            strand.figureStart += wait
+            strand.next = strand.figureStart
+            composition.focusStrand = strandIndex
+            composition.focusUntil = strand.figureStart + articulation + breathingRoom
+            if (wait > 0) continue
+          }
+        }
+      }
+      if (strand.active) {
+        const motifIndex = (strand.position + strandIndex) % strand.figureMotif.length
+        let midi = scaleNote(strand.degree + (strandIndex === 0 ? 14 : 7) + strand.figureMotif[motifIndex])
+        while (midi > 85) midi -= 12
+        while (midi < 57) midi += 12
+        if (Math.abs(midi - strand.lastMidi) > 8) {
+          const alternative = midi + (midi > strand.lastMidi ? -12 : 12)
+          if (alternative >= 57 && alternative <= 85) midi = alternative
+        }
+        const amplitude = strand.figureLevel * (strand.position === 0 ? 1 : .72 + random() * .2)
+        putNote(details, midi, strand.next, palette.noteLength * (.82 + random() * .32),
+          amplitude, strand.figureSpectral, strand.figurePan)
+        strand.lastMidi = midi
+      }
+      strand.position++
+      if (strand.position >= strand.count) {
+        strand.next = strand.origin + strand.figureCycle
+        strand.position = 0; strand.turns++; strand.prepared = false
+      } else {
+        strand.next = strand.figureStart + strand.position * strand.figureSpacing
+      }
+    }
+  }
+
   function scheduleTo(target: number) {
     while (scoreTime < target) {
       const checkpoint: ScoreCheckpoint = { time: scoreTime, randomState: random.getState(), composition: copyComposition(composition) }
@@ -511,8 +658,12 @@ export function createSoundscape(
       const chapter = composition.chapter
       const duration = (25 + (1 - value.movement) * 46) * (.84 + random() * .3) * (chapter.kind === 2 ? 1.13 : 1)
       if (composition.phrase > 0) {
-        const options = progressions[composition.degree]
-        composition.degree = chapter.remaining === 1 && chapter.kind !== 1 ? 0 : options[Math.floor(random() * options.length)]
+        if (composition.dwell > 0) composition.dwell--
+        else {
+          const options = progressions[composition.degree]
+          composition.degree = options[Math.floor(random() * options.length)]
+          composition.dwell = Math.floor(random() * (1 + (1 - value.movement) * 2.6))
+        }
       }
       checkpoints.push(checkpoint)
       const chordDegree = composition.degree
@@ -520,9 +671,22 @@ export function createSoundscape(
       const chord = leadVoicing(chordDegree, count)
       const padRest = chapter.kind === 2 && composition.phrase % 2 === 1
       if (!padRest) {
-        chord.forEach((midi, index) => putNote(pads, midi, scoreTime + random() * .7,
-          duration + Math.min(11, duration * .28), .096 * Math.sqrt(3 / count) * (.85 + random() * .22),
-          chapter.spectral * (1 - index * .045)))
+        chord.forEach((midi, index) => {
+          // A shared pitch already living through most of the next phrase is
+          // retained. New harmony arrives around it instead of rearticulating
+          // every voice together at a chord boundary.
+          const held = pads.some((voice) => voice.events.some((event) =>
+            event.midi === midi && event.start <= scoreTime && event.end > scoreTime + duration * .68))
+          if (held) return
+          const entry = composition.phrase === 0 ? random() * .7 : 1.3 + index * 1.6 + random() * 2.4
+          // Eight pad slots support two four-note generations. Retire this
+          // generation before the earliest possible start of the third, even
+          // at high movement, so long releases cannot starve the next chord.
+          const earliestNextDuration = (25 + (1 - value.movement) * 46) * .84
+          const length = Math.min(duration * (2.03 + random() * .27), duration + earliestNextDuration - entry - .1)
+          putNote(pads, midi, scoreTime + entry, length,
+            .088 * Math.sqrt(3 / count) * (.85 + random() * .22), chapter.spectral * (1 - index * .045))
+        })
       }
       composition.voicing = chord
 
@@ -538,30 +702,7 @@ export function createSoundscape(
       }
       composition.lastBass = bass
 
-      // A small motif returns with altered spacing, register and ending. The
-      // space after each figure is intentional, instead of a constant note rain.
-      if (value.density > .035 && (composition.phrase === 0 || random() < chapter.details * (.5 + value.density * .5))) {
-        const noteCount = Math.min(composition.motif.length, 2 + Math.round(value.density * 2))
-        const spacing = (1.9 + (1 - value.movement) * 2.1) * (.88 + random() * .25)
-        const startTime = scoreTime + (composition.phrase === 0 ? 2.2 : 4 + random() * 7)
-        for (let index = 0; index < noteCount; index++) {
-          let midi = scaleNote(chordDegree + 14 + composition.motif[index])
-          while (midi > 85) midi -= 12
-          while (midi < 58) midi += 12
-          if (Math.abs(midi - composition.lastDetail) > 8) {
-            const alternative = midi + (midi > composition.lastDetail ? -12 : 12)
-            if (alternative >= 57 && alternative <= 85) midi = alternative
-          }
-          const noteTime = startTime + index * spacing * (.94 + random() * .12)
-          putNote(details, midi, noteTime, palette.noteLength * (.78 + random() * .4),
-            (.062 + value.density * .03) * (index === 0 ? 1 : .72 + random() * .2), chapter.spectral)
-          composition.lastDetail = midi
-        }
-        if (value.density > .35 && chapter.kind !== 2 && random() < .65) {
-          const reply = scaleNote(chordDegree + (chapter.kind === 1 ? 18 : 16))
-          putNote(details, Math.min(85, reply), scoreTime + duration * .68, palette.noteLength * 1.15, .039, chapter.spectral * .7)
-        }
-      }
+      scheduleStrands(scoreTime + duration, chordDegree)
       if (composition.phrase === 0 || random() < chapter.texture) {
         const tone = chord[Math.floor(random() * chord.length)] ?? root + 24
         putNote(textures, tone, scoreTime + (composition.phrase === 0 ? .3 : 2 + random() * 8),
@@ -581,21 +722,12 @@ export function createSoundscape(
   const horizon = () => offline ? (context as OfflineAudioContext).length / context.sampleRate + 2 : context.currentTime + LOOKAHEAD_SECONDS
 
   function holdCurve(param: AudioParam, curve: AutomationCurve | undefined, boundary: number) {
-    if (typeof param.cancelAndHoldAtTime === 'function') param.cancelAndHoldAtTime(boundary)
-    else {
-      param.cancelScheduledValues(boundary)
-      if (curve) {
-        for (let index = 1; index < curve.points.length; index++) {
-          const left = curve.points[index - 1], right = curve.points[index]
-          if (left.time <= boundary && right.time >= boundary) {
-            const position = (boundary - left.time) / (right.time - left.time)
-            param.linearRampToValueAtTime(left.value + (right.value - left.value) * position, boundary)
-            break
-          }
-        }
-      }
-    }
-    if (curve) for (const point of curve.points) if (point.time > boundary) param.linearRampToValueAtTime(point.value, point.time)
+    // These curves are entirely ours and piecewise linear. Restoring their
+    // original endpoints preserves the slope through a future boundary without
+    // creating synthetic hold points. Repeated native cancelAndHoldAtTime calls
+    // at that same future boundary can otherwise flatten a still-ringing note.
+    param.cancelScheduledValues(boundary)
+    if (curve) for (const point of curve.points) if (point.time >= boundary) param.linearRampToValueAtTime(point.value, point.time)
   }
 
   function replan() {
@@ -623,9 +755,11 @@ export function createSoundscape(
     scheduleTo(horizon())
   }
 
+  const rhythm = createRhythm(context, value, pulseBus, mix, musicalSeed, root)
   const parameterTargets = new Map<AudioParam, number>()
   function apply(next: SoundSettings, initial = false) {
     const previous = value; value = sanitize(next)
+    rhythm.update(value)
     const time = context.currentTime
     const change = (param: AudioParam, target: number, duration = 1.2) => {
       // A different slider must not restart this parameter's existing ramp.
@@ -633,8 +767,11 @@ export function createSoundscape(
       parameterTargets.set(param, target)
       if (initial) param.setValueAtTime(target, time); else ramp(param, target, time, duration)
     }
-    change(lowpass.frequency, (560 + (1 - value.darkness) ** 1.6 * 4400 - value.warmth * 180) * palette.brightness)
+    const cutoff = (560 + (1 - value.darkness) ** 1.6 * 4400 - value.warmth * 180) * palette.brightness
+    change(lowpass.frequency, cutoff)
+    change(roomTone.frequency, cutoff)
     change(body.gain, -.5 + value.warmth * 3.4)
+    change(roomBody.gain, -.5 + value.warmth * 3.4)
     change(wetLowpass.frequency, 1500 + (1 - value.darkness) * 2600)
     // Space changes how new sound enters the room. Fixed returns, feedback and
     // dry level leave already-ringing tails and the musical anchor untouched.
@@ -642,6 +779,7 @@ export function createSoundscape(
     change(echoSend.gain, .02 + value.space ** 1.4 * .55)
     change(filterMovement.gain, 20 + value.movement * 330); change(panMovement.gain, value.movement * .12)
     change(slowDrift.gain, .25 + value.drift * 6); change(tapeWow.gain, value.drift ** 1.5 * palette.wow * 4)
+    for (const depth of timbreDepths) change(depth.node.gain, depth.maximum * (.3 + value.movement * .7))
     change(layerBus.bed.gain, value.bedLevel); change(layerBus.pad.gain, value.padLevel)
     change(layerBus.detail.gain, value.detailLevel); change(layerBus.texture.gain, value.textureLevel)
     change(rainLevel.gain, value.rain ** 1.2 * (environment === 'city' ? .56 : .48))
@@ -663,6 +801,7 @@ export function createSoundscape(
       if (stopped) return
       stopped = true
       if (refill !== undefined) clearInterval(refill)
+      rhythm.stop()
       output.gain.cancelScheduledValues(context.currentTime); output.gain.setValueAtTime(0, context.currentTime)
       for (const source of sources) { try { source.stop() } catch { /* Already stopped. */ } }
       for (const node of nodes) node.disconnect()

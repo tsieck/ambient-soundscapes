@@ -370,5 +370,12 @@ The repository's Pages source must use GitHub Actions. Vite's relative asset pat
 support the `/ambient-soundscapes/` repository subdirectory. The optional A/B page
 and temporary rendered audio are outside `dist/` and are not part of this release.
 
+## License
+
+Stillroom is available under the [MIT License](LICENSE). You may use, modify,
+redistribute, and use it commercially, provided you retain the copyright and
+license notice. The software is provided without warranty. Third-party
+dependencies retain their own licenses.
+
 Technical references: [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices)
 and [GitHub Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).

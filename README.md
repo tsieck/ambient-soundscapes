@@ -25,7 +25,7 @@ and keeps the deeper controls within reach.
 ## Start listening
 
 1. Open [Stillroom](https://tsieck.github.io/ambient-soundscapes/) and choose a
-   preset from the **13 presets** selector above its name.
+   preset from the **15 presets** selector above its name.
 2. Select **Begin listening**. Playback starts only after your interaction.
 3. Adjust **Warmth**, **Darkness**, **Movement**, and **Rain**. Give each sound
    time to develop: its phrases and color changes unfold over different timescales.
@@ -43,12 +43,16 @@ For long swells, start with **Distant tide** or its deeper, quieter relative,
 notes for a darker cinematic atmosphere; **Last light** brings that brass into
 warmer harmony with soft electric keys.
 
+For something intimate and a little whimsical, try **Paper lanterns**: soft,
+piano-like keys tracing small melodies against a warm backdrop. **Daydream**
+answers with rounded bell notes, gently wavering pads, and lilting figures.
+
 Choose **Rainy city** or **Faded afternoon** independently of the synth preset.
 **Just listen** hides the controls; **Show controls** or **Escape** brings them
 back. The spacebar toggles playback when you are outside a dialog or interactive
 control. Sliders, preset choices, and dialogs are keyboard accessible.
 
-## Thirteen sound palettes
+## Fifteen sound palettes
 
 Each preset selects an instrument architecture, harmonic vocabulary, motif, and
 starting mix. Variations explore a bounded range around that identity. The table
@@ -69,6 +73,8 @@ describes the authored starting points; your settings can take them elsewhere.
 | **Neon skyline** | Expressive synth brass and FM bells | Deep bass, broad brass swells, distant glass notes, and darker harmonic color. |
 | **Midnight sea** | Bowed pads and rounded plucks | A deeper, more spacious relative of Distant tide, with sparse detail and a moving texture bed. |
 | **Last light** | Expressive synth brass and electric keys | Warm, wistful brass harmony with soft keys and gentle motion. |
+| **Paper lanterns** | Soft piano-like keys and warm pads | Intimate, prominent keys, small recurring melodies, and a quiet sustained backdrop. |
+| **Daydream** | Rounded bell keys and wavering pads | Light, lilting melodic figures with a warm music-box character and gentle motion. |
 
 The palettes are defined in [sound-presets.ts](src/sound-presets.ts) and
 [audio.ts](src/audio.ts). All begin with the optional pulse and headphone layer
@@ -197,8 +203,11 @@ foundation, eight for chords, and five for details. Three resonant-noise voices
 form the texture pool. The pulse has six reusable voices; the headphone layer
 uses two separately routed sine oscillators.
 
-Subtractive, expressive brass, organ-like, bowed-envelope, electric-key, and
-two-operator FM architectures give the presets different articulation and spectra. Eleven slow
+Subtractive, expressive brass, organ-like, bowed-envelope, soft-key, electric-key,
+and two-operator FM architectures give the presets different articulation and
+spectra. Paper lanterns separates a brief, bright strike from a rounder, decaying
+body. The two whimsical palettes use shorter melodic figures with a gentle lilt
+and deliberate rests, independent of the optional rhythm layer. Eleven slow
 oscillators provide independent color movement for the sustained pad and texture
 voices. Their random sequence is separate from composition and weather, so
 adding or adjusting this behavior does not consume musical random decisions.
@@ -252,6 +261,7 @@ and listening criteria:
 | [Rhythm and headphone beats](docs/rhythm-spatial-research.md) | Groove, selective syncopation, separate binaural routing, and audio-clock scheduling. |
 | [Spatial depth](docs/spatial-depth-research.md) | Early reflections, frequency-dependent decay, and the room implementation. |
 | [Cinematic presets](docs/cinematic-presets-research.md) | Expressive synth brass, spacious electronic orchestration, and three complementary palettes. |
+| [Whimsical presets](docs/whimsical-presets-research.md) | Intimate keys, rounded bells, and small melodic figures with room to breathe. |
 | [Background artwork](docs/background-art.md) | The generated photographic-style landscapes, their source prompts, and local asset paths. |
 
 The landscapes are generated scenes, with interface animation layered over local
@@ -308,7 +318,7 @@ site into `dist/`; `npm run preview` serves that production build locally.
 | [src/audio.ts](src/audio.ts) | Synthesis, generative score, phrase checkpoints, mixing, and playback lifecycle. |
 | [src/rhythm.ts](src/rhythm.ts) | Pulse patterns, beat scheduling, and the separate headphone-tone pair. |
 | [src/room.ts](src/room.ts) | Deterministic stereo room response. |
-| [src/sound-presets.ts](src/sound-presets.ts) | Thirteen starting palettes and bounded variation generation. |
+| [src/sound-presets.ts](src/sound-presets.ts) | Fifteen starting palettes and bounded variation generation. |
 | [src/presets.ts](src/presets.ts) | Landscape definitions and control labels. |
 | [src/storage.ts](src/storage.ts) | Local save validation, migration, and persistence. |
 | [src/AtmosphereScene.tsx](src/AtmosphereScene.tsx) | Landscape presentation and animation. |

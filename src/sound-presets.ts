@@ -4,7 +4,8 @@ import { RHYTHM_DEFAULTS } from './rhythm';
 export type SoundPresetId =
   | 'velvet' | 'tape' | 'glass' | 'orbit' | 'bloom'
   | 'horizon' | 'ember' | 'tide' | 'mist' | 'aurora'
-  | 'neon' | 'midnight' | 'afterglow';
+  | 'neon' | 'midnight' | 'afterglow'
+  | 'lantern' | 'daydream';
 
 export interface SoundIdentity {
   preset: SoundPresetId;
@@ -97,6 +98,18 @@ export const SOUND_PRESETS: SoundPreset[] = [
     settings: { ...RHYTHM_DEFAULTS, warmth: .84, darkness: .32, movement: .35, rain: .03, volume: .5, space: .72, density: .38, drift: .4, tension: .27,
       bedLevel: .42, padLevel: .74, detailLevel: .52, textureLevel: .2 },
   },
+  {
+    id: 'lantern', name: 'Paper lanterns',
+    description: 'Soft piano-like keys tracing little melodies against a warm backdrop.',
+    settings: { ...RHYTHM_DEFAULTS, warmth: .8, darkness: .32, movement: .32, rain: .01, volume: .5, space: .4, density: .46, drift: .26, tension: .27,
+      bedLevel: .28, padLevel: .38, detailLevel: .86, textureLevel: .16 },
+  },
+  {
+    id: 'daydream', name: 'Daydream',
+    description: 'Rounded bells and gently wavering pads with a lilting, playful touch.',
+    settings: { ...RHYTHM_DEFAULTS, warmth: .62, darkness: .22, movement: .46, rain: 0, volume: .5, space: .57, density: .49, drift: .4, tension: .3,
+      bedLevel: .26, padLevel: .42, detailLevel: .73, textureLevel: .25 },
+  },
 ];
 
 interface VariationProfile {
@@ -122,6 +135,8 @@ const profiles: Record<SoundPresetId, VariationProfile> = {
   neon: { tone: .1, motion: .12, texture: .11, rain: .1, layers: [.12, .08, .1, .12] },
   midnight: { tone: .09, motion: .11, texture: .1, rain: .12, layers: [.12, .08, .08, .12] },
   afterglow: { tone: .08, motion: .1, texture: .11, rain: .025, layers: [.1, .1, .12, .1] },
+  lantern: { tone: .07, motion: .08, texture: .09, rain: .015, layers: [.08, .08, .08, .07] },
+  daydream: { tone: .08, motion: .1, texture: .09, rain: .015, layers: [.08, .09, .1, .08] },
 };
 
 function seededRandom(seed: number) {

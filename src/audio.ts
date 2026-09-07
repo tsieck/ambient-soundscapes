@@ -157,10 +157,11 @@ interface Palette {
   brightness: number
   wow: number
   pad: 'subtractive' | 'bowed' | 'organ' | 'fm' | 'brass'
-  detail: 'fm' | 'electric' | 'pluck' | 'bowed'
+  detail: 'fm' | 'electric' | 'pluck' | 'bowed' | 'felt'
   ratio: number
   index: number
   motif: number[]
+  phrasing?: { spacing: number; cycle: number; lilt: number }
 }
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11]
@@ -182,6 +183,8 @@ const PALETTES: Record<SoundPresetId, Palette> = {
   neon: { partials: [1,.62,.42,.3,.23,.18,.14,.105,.08,.06,.045,.032], modes: [MINOR,DORIAN], attack: 7.2, noteAttack: .18, noteLength: 19, air: .8, brightness: 1.08, wow: .65, pad: 'brass', detail: 'fm', ratio: 2.414, index: 1.15, motif: [0,4,3,1] },
   midnight: { partials: [1,.24,.15,.07,.033,.015,.009], modes: [DORIAN,MINOR], attack: 12, noteAttack: .85, noteLength: 17, air: 1.5, brightness: .82, wow: .65, pad: 'bowed', detail: 'pluck', ratio: 1, index: .5, motif: [0,4,1] },
   afterglow: { partials: [1,.46,.31,.19,.13,.09,.063,.044,.03,.021], modes: [MAJOR,LYDIAN], attack: 9.5, noteAttack: .14, noteLength: 13, air: .65, brightness: 1.03, wow: 1.1, pad: 'brass', detail: 'electric', ratio: 1, index: 1.3, motif: [0,2,4,1] },
+  lantern: { partials: [1,.2,.11,.045,.02,.008], modes: [MAJOR,DORIAN], attack: 7, noteAttack: .035, noteLength: 8.5, air: .45, brightness: .94, wow: .55, pad: 'subtractive', detail: 'felt', ratio: 1, index: .5, motif: [0,1,4,2], phrasing: { spacing: .64, cycle: .78, lilt: .12 } },
+  daydream: { partials: [1,.14,.065,.025,.009], modes: [LYDIAN,MAJOR], attack: 6.5, noteAttack: .055, noteLength: 6.8, air: .65, brightness: 1.04, wow: .85, pad: 'subtractive', detail: 'fm', ratio: 3, index: .38, motif: [0,2,1,4], phrasing: { spacing: .54, cycle: .7, lilt: .22 } },
 }
 
 function normalizeIdentity(id: AtmosphereId, identity?: SoundIdentity): SoundIdentity {
@@ -201,7 +204,7 @@ interface Voice {
   tuning: { param: AudioParam; ratio: number }[]
   envelope: GainNode
   pan: StereoPannerNode
-  colors: { param: AudioParam; kind: 'filter' | 'fm' | 'brass-lowpass' | 'brass-highpass'; amount: number }[]
+  colors: { param: AudioParam; kind: 'filter' | 'fm' | 'brass-lowpass' | 'brass-highpass' | 'strike'; amount: number }[]
   events: NoteEvent[]
   available: number
 }
@@ -398,6 +401,11 @@ export function createSoundscape(
   const shadowHarmonics = harmonics.map((partial, index) => partial * (index < 2 ? 1 : index % 2 ? .74 : .35))
   const shadowPadWave = context.createPeriodicWave(new Float32Array(harmonics.length), shadowHarmonics)
   const roundWave = context.createPeriodicWave(new Float32Array(6), new Float32Array([0,1,.09,.055,.014,.005]))
+  // Odd body partials and an even-only strike avoid phase cancellation between
+  // free-running oscillators. The mixed note consistently opens brighter, then
+  // softens as the strike decays, without needing more sources or retriggers.
+  const feltBodyWave = context.createPeriodicWave(new Float32Array(8), new Float32Array([0,1,0,.2,0,.028,0,.01]))
+  const feltStrikeWave = context.createPeriodicWave(new Float32Array(9), new Float32Array([0,0,.55,0,.24,0,.08,0,.03]))
   const bassWave = context.createPeriodicWave(new Float32Array(5), new Float32Array([0,1,.12,.04,.009]))
   const noise = keep(context.createBufferSource()); noise.buffer = scene.rain; noise.loop = true; start(noise)
   const grainOne = lfo(.4731, characterRandom() * TAU)
@@ -443,6 +451,7 @@ export function createSoundscape(
     }
 
     const isDetail = layer === 'detail'
+    const felt = isDetail && palette.detail === 'felt'
     const brass = layer === 'pad' && palette.pad === 'brass'
     const fm = isDetail ? palette.detail === 'fm' || palette.detail === 'electric' : layer === 'pad' && palette.pad === 'fm'
     const tone = filter('lowpass', 4000, brass ? 1.05 : layer === 'pad' && palette.pad === 'subtractive' ? .65 : .45)
@@ -475,20 +484,21 @@ export function createSoundscape(
     } else {
       for (let layerIndex = 0; layerIndex < 2; layerIndex++) {
         const oscillator = keep(context.createOscillator())
-        const wave = layer === 'bed' ? bassWave : (isDetail && palette.detail !== 'bowed' ? roundWave
+        const wave = felt ? (layerIndex === 0 ? feltBodyWave : feltStrikeWave) : layer === 'bed' ? bassWave : (isDetail && palette.detail !== 'bowed' ? roundWave
           : layer === 'pad' && layerIndex === 1 ? shadowPadWave : padWave)
         if (layer === 'bed' && layerIndex === 0) oscillator.type = 'sine'
         else oscillator.setPeriodicWave(wave)
-        oscillator.detune.value = (layerIndex === 0 ? -1 : 1) * (.5 + characterRandom() * (brass ? 4 : palette.pad === 'bowed' ? 3 : 1.5))
-        const level = gain(layer === 'bed' ? (layerIndex === 0 ? .8 : .2) : .5)
+        oscillator.detune.value = (layerIndex === 0 ? -1 : 1) * ((felt ? .2 : .5) + characterRandom() * (felt ? .5 : brass ? 4 : palette.pad === 'bowed' ? 3 : 1.5))
+        const level = gain(felt ? (layerIndex === 0 ? .72 : 0) : layer === 'bed' ? (layerIndex === 0 ? .8 : .2) : .5)
+        if (felt && layerIndex === 1) voice.colors.push({ param: level.gain, kind: 'strike', amount: .28 })
         // Complementary gains keep the pair's total weight constant. This
         // moves the spectral balance, rather than applying blanket tremolo.
         if (breath) colorMotion(breath, level.gain, layerIndex === 0 ? .24 : -.24)
         oscillator.connect(level).connect(toneInput)
-        voice.tuning.push({ param: oscillator.frequency, ratio: 1 })
+        voice.tuning.push({ param: oscillator.frequency, ratio: felt && layerIndex === 1 ? 1.001 : 1 })
         slowDrift.connect(oscillator.detune); tapeWow.connect(oscillator.detune); start(oscillator)
       }
-      voice.colors.push({ param: tone.frequency, kind: brass ? 'brass-lowpass' : 'filter', amount: brass ? 9 : layer === 'bed' ? 3 : palette.pad === 'organ' ? 7 : 4.8 })
+      voice.colors.push({ param: tone.frequency, kind: brass ? 'brass-lowpass' : 'filter', amount: brass ? 9 : felt ? 6 : layer === 'bed' ? 3 : palette.pad === 'organ' ? 7 : 4.8 })
     }
     return voice
   }
@@ -518,13 +528,18 @@ export function createSoundscape(
     const voice = pool.find((candidate) => candidate.available <= time + .001)
     if (!voice) return
     const keyed = voice.layer === 'detail'
+    const felt = keyed && palette.detail === 'felt'
     const texture = voice.layer === 'texture'
     const brass = voice.layer === 'pad' && palette.pad === 'brass'
     const first = composition.phrase === 0
     const attack = keyed ? Math.min(length * .3, palette.noteAttack * (.85 + random() * .3))
       : Math.min(length * .27, (first ? (texture ? 3.5 : brass ? 4.2 : 2.4) : texture ? 8 : voice.layer === 'bed' ? 5 : palette.attack) * (.85 + random() * .3))
     const end = time + length
-    const points: EnvelopePoint[] = keyed ? [
+    const points: EnvelopePoint[] = felt ? [
+      { time, value: 0 }, { time: time + attack, value: amplitude },
+      { time: time + Math.min(length * .18, .6), value: amplitude * .5 },
+      { time: time + length * .55, value: amplitude * .13 }, { time: end, value: 0 },
+    ] : keyed ? [
       { time, value: 0 }, { time: time + attack, value: amplitude },
       { time: time + Math.max(attack + .2, length * .33), value: amplitude * .35 }, { time: end, value: 0 },
     ] : [
@@ -538,6 +553,15 @@ export function createSoundscape(
     const randomPan = (random() * 2 - 1) * spread
     voice.pan.pan.setValueAtTime(position ?? randomPan, time)
     for (const color of voice.colors) {
+      if (color.kind === 'strike') {
+        const peak = color.amount * Math.min(1.15, spectral)
+        curves.push({ param: color.param, points: [
+          { time, value: 0 }, { time: time + attack * .5, value: peak },
+          { time: time + Math.min(.45, length * .12), value: peak * .12 },
+          { time: time + length * .24, value: 0 }, { time: end, value: 0 },
+        ] })
+        continue
+      }
       if (color.kind === 'brass-lowpass' || color.kind === 'brass-highpass') {
         const lowpass = color.kind === 'brass-lowpass'
         const peak = Math.min(7600, fundamental * color.amount * (.65 + spectral * .65))
@@ -615,6 +639,11 @@ export function createSoundscape(
   }
 
   const progressions = [[5,3,4,1], [4,3,0,5], [5,3,0], [0,4,1,5], [0,5,3], [3,0,4,1], [0,3,5]]
+  // Slightly late alternate notes give a figure its own lilt. This belongs to
+  // the melody, independent of optional Pulse/Bounce. Use the same offset for
+  // scheduling and the ensemble's reservation of room around the whole phrase.
+  const figureOffset = (strand: MelodicStrand, position: number) =>
+    (position + (position % 2 ? palette.phrasing?.lilt ?? 0 : 0)) * strand.figureSpacing
   function scheduleStrands(until: number, chordDegree: number) {
     const chapter = composition.chapter
     const pace = 1.2 - value.movement * .4
@@ -630,8 +659,8 @@ export function createSoundscape(
         strand.degree = chordDegree
         // Snapshot the complete gesture, including a deferred entrance. A live
         // edit may affect the next figure, never rewrite a half-played contour.
-        strand.figureCycle = strand.cycle * pace
-        strand.figureSpacing = strand.spacing * pace
+        strand.figureCycle = strand.cycle * pace * (palette.phrasing?.cycle ?? 1)
+        strand.figureSpacing = strand.spacing * pace * (palette.phrasing?.spacing ?? 1)
         strand.figureMotif = [...composition.motif]
         strand.figureLevel = (.06 + value.density * .029) * (strandIndex === 0 ? 1 : .58)
         strand.figureSpectral = chapter.spectral * (strandIndex === 0 ? 1 : .72)
@@ -642,7 +671,7 @@ export function createSoundscape(
           random() < chapter.details * (.45 + value.density * .55) * (strandIndex === 0 ? 1 : .68))
         strand.prepared = true
         if (strand.active) {
-          const articulation = (strand.count - 1) * strand.figureSpacing
+          const articulation = figureOffset(strand, strand.count - 1)
           const breathingRoom = 1.2 + (1 - value.density) * 2.4
           const wait = composition.focusStrand !== strandIndex ? Math.max(0, composition.focusUntil - strand.next) : 0
           // A reply can wait for the other player's contour while its original
@@ -678,7 +707,7 @@ export function createSoundscape(
         strand.next = strand.origin + strand.figureCycle
         strand.position = 0; strand.turns++; strand.prepared = false
       } else {
-        strand.next = strand.figureStart + strand.position * strand.figureSpacing
+        strand.next = strand.figureStart + figureOffset(strand, strand.position)
       }
     }
   }

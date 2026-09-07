@@ -122,15 +122,15 @@ test('live controls and landscapes preserve the running sound graph without rest
   await expect(page.getByRole('button', { name: 'Play soundscape' })).toBeEnabled();
 });
 
-test('thirteen sound presets set defaults while scenery, volume, and rain remain independent', async ({ page }) => {
-  expect(SOUND_PRESETS).toHaveLength(13);
+test('fifteen sound presets set defaults while scenery, volume, and rain remain independent', async ({ page }) => {
+  expect(SOUND_PRESETS).toHaveLength(15);
   expect(SOUND_PRESETS.every(preset => preset.settings.pulse === 0 && preset.settings.binaural === 0)).toBe(true);
   await page.goto('/');
   await page.getByLabel('Master volume').press('End');
   await page.getByLabel('Rain', { exact: true }).press('End');
-  await expect(page.getByRole('button', { name: 'Choose sound preset' })).toContainText('13 PRESETS');
+  await expect(page.getByRole('button', { name: 'Choose sound preset' })).toContainText('15 PRESETS');
   await page.getByRole('button', { name: 'Choose sound preset' }).click();
-  await expect(page.getByRole('dialog').locator('button[aria-pressed="false"]')).toHaveCount(12);
+  await expect(page.getByRole('dialog').locator('button[aria-pressed="false"]')).toHaveCount(14);
   await expect(page.getByRole('dialog').getByRole('button', { pressed: true })).toHaveCount(1);
   await page.getByRole('dialog').getByRole('button', { name: /Tape afternoon/ }).click();
   await expect(page.getByRole('button', { name: 'Choose sound preset' })).toBeFocused();
@@ -152,14 +152,14 @@ test('thirteen sound presets set defaults while scenery, volume, and rain remain
   expect(await currentPlace(page)).toEqual(sound);
 });
 
-test('new cinematic presets retain their variations and listening choices through saved-place reloads', async ({ page }) => {
+test('new presets retain their variations and listening choices through saved-place reloads', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Faded afternoon/ }).click();
   await page.getByLabel('Rain', { exact: true }).press('End');
   await page.getByLabel('Master volume').press('Home');
   await page.getByRole('group', { name: 'Rhythm', exact: true }).getByRole('button', { name: 'Bounce', exact: true }).click();
   const places: { name: string; sound: CurrentPlace }[] = [];
-  for (const [id, name] of [['neon', 'Neon skyline'], ['midnight', 'Midnight sea'], ['afterglow', 'Last light']]) {
+  for (const [id, name] of [['neon', 'Neon skyline'], ['midnight', 'Midnight sea'], ['afterglow', 'Last light'], ['lantern', 'Paper lanterns'], ['daydream', 'Daydream']]) {
     await chooseSound(page, name);
     const original = await currentPlace(page);
     await page.getByRole('button', { name: 'New variation', exact: true }).click();
@@ -174,8 +174,8 @@ test('new cinematic presets retain their variations and listening choices throug
     places.push({ name, sound });
   }
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Last light', exact: true })).toBeVisible();
-  expect(await currentPlace(page)).toEqual(places[2].sound);
+  await expect(page.getByRole('heading', { name: 'Daydream', exact: true })).toBeVisible();
+  expect(await currentPlace(page)).toEqual(places[places.length - 1].sound);
   for (const { name, sound } of places) {
     await page.getByRole('button', { name: /Saved places/ }).click();
     await page.getByRole('dialog').getByRole('button', { name: new RegExp(`^Saved ${name}`) }).click();
@@ -437,14 +437,14 @@ for (const width of [320, 390, 768]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
     await page.getByRole('button', { name: 'Choose sound preset' }).click();
     const choices = page.getByRole('dialog').locator('button[aria-pressed="false"]');
-    await expect(choices).toHaveCount(12);
-    const last = page.getByRole('dialog').getByRole('button', { name: /Last light/ });
+    await expect(choices).toHaveCount(14);
+    const last = page.getByRole('dialog').getByRole('button', { name: /Daydream/ });
     await last.scrollIntoViewIfNeeded();
     await expect(last).toBeInViewport();
     const lastBox = await last.boundingBox();
     expect(lastBox!.x).toBeGreaterThanOrEqual(0);
     expect(lastBox!.x + lastBox!.width).toBeLessThanOrEqual(width);
     await last.click();
-    await expect(page.getByRole('heading', { name: 'Last light', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Daydream', exact: true })).toBeVisible();
   });
 }

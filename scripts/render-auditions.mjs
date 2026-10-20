@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
 import { chromium } from '@playwright/test';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
+import { createAuditionOutput } from './audition-output.mjs';
 import { existsSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,7 @@ import { createHash } from 'node:crypto';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const options = {
   before: '/tmp/stillroom-depth-before',
-  out: '/tmp/stillroom-depth-auditions',
+  out: undefined,
   seed: 4217,
 };
 let checkOnly = false;
@@ -24,7 +25,10 @@ for (let i = 2; i < process.argv.length; i++) {
                                   [--seed INTEGER] [--check]
 
 Defaults: before=${options.before}
-          out=${options.out}, seed=${options.seed}
+          out=a unique private directory in the system temporary directory, seed=${options.seed}
+
+--out must name a new directory beneath an existing trusted parent. Existing
+output directories are refused; the final output path is printed after rendering.
 
 The baseline directory must contain audio.ts and its runtime imports, including
 rhythm.ts. Both engines receive the current SOUND_PRESETS settings. --check only
@@ -91,8 +95,9 @@ const number = (value, places = 2) => Number(value.toFixed(places));
 const localChrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
   || (existsSync(localChrome) ? localChrome : undefined);
+const outputFiles = await createAuditionOutput(options.out);
+options.out = outputFiles.directory;
 const browser = await chromium.launch({ executablePath, headless: true });
-await mkdir(options.out, { recursive: true });
 const report = {
   createdAt: new Date().toISOString(), sampleRate, channels: 2, encoding: '16-bit PCM WAV',
   seed: options.seed, atmosphere: 'afternoon', requestedRmsDb, peakCeilingDb, fadeSeconds,
@@ -165,7 +170,7 @@ async function saveWav(rendered, filename, targetRms) {
     for (let i = 0; i < bytes.length; i += 16384) binary += String.fromCharCode(...bytes.subarray(i, i + 16384));
     return { base64: btoa(binary), peak, rms: Math.sqrt(energy / (buffer.length * channels)) };
   }, { gain });
-  await writeFile(join(options.out, filename), Buffer.from(output.base64, 'base64'));
+  await outputFiles.write(filename, Buffer.from(output.base64, 'base64'));
   return {
     file: filename, rawPeak: rendered.rawPeak, rawPeakDb: number(db(rendered.rawPeak)),
     rawRms: rendered.rawRms, rawRmsDb: number(db(rendered.rawRms)),
@@ -242,6 +247,6 @@ for (const button of document.querySelectorAll('[data-switch]')) button.addEvent
   try { await next.play(); } catch { next.focus(); }
 });
 </script></body></html>`;
-await writeFile(join(options.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
-await writeFile(join(options.out, 'index.html'), html);
+await outputFiles.write('report.json', `${JSON.stringify(report, null, 2)}\n`);
+await outputFiles.write('index.html', html);
 console.log(`Auditions ready: ${join(options.out, 'index.html')}\nMeasurements: ${join(options.out, 'report.json')}`);

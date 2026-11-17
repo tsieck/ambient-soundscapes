@@ -5,7 +5,7 @@ export type SoundPresetId =
   | 'velvet' | 'tape' | 'glass' | 'orbit' | 'bloom'
   | 'horizon' | 'ember' | 'tide' | 'mist' | 'aurora'
   | 'neon' | 'midnight' | 'afterglow'
-  | 'lantern' | 'daydream';
+  | 'lantern' | 'daydream' | 'window';
 
 export interface SoundIdentity {
   preset: SoundPresetId;
@@ -110,6 +110,12 @@ export const SOUND_PRESETS: SoundPreset[] = [
     settings: { ...RHYTHM_DEFAULTS, warmth: .62, darkness: .22, movement: .46, rain: 0, volume: .5, space: .57, density: .49, drift: .4, tension: .3,
       bedLevel: .26, padLevel: .42, detailLevel: .73, textureLevel: .25 },
   },
+  {
+    id: 'window', name: 'Window seat',
+    description: 'A felt piano figure returns as three distant voices drift in and out of harmony.',
+    settings: { ...RHYTHM_DEFAULTS, warmth: .68, darkness: .28, movement: .33, rain: 0, volume: .5, space: .79, density: .56, drift: .29, tension: .35,
+      bedLevel: .41, padLevel: .77, detailLevel: .94, textureLevel: .12 },
+  },
 ];
 
 interface VariationProfile {
@@ -137,6 +143,7 @@ const profiles: Record<SoundPresetId, VariationProfile> = {
   afterglow: { tone: .08, motion: .1, texture: .11, rain: .025, layers: [.1, .1, .12, .1] },
   lantern: { tone: .07, motion: .08, texture: .09, rain: .015, layers: [.08, .08, .08, .07] },
   daydream: { tone: .08, motion: .1, texture: .09, rain: .015, layers: [.08, .09, .1, .08] },
+  window: { tone: .07, motion: .14, texture: .09, rain: .01, layers: [.09, .09, .06, .06] },
 };
 
 function seededRandom(seed: number) {

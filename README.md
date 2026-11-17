@@ -25,7 +25,7 @@ and keeps the deeper controls within reach.
 ## Start listening
 
 1. Open [Stillroom](https://tsieck.github.io/ambient-soundscapes/) and choose a
-   preset from the **15 presets** selector above its name.
+   preset from the **16 presets** selector above its name.
 2. Select **Begin listening**. Playback starts only after your interaction.
 3. Adjust **Warmth**, **Darkness**, **Movement**, and **Rain**. Give each sound
    time to develop: its phrases and color changes unfold over different timescales.
@@ -52,7 +52,7 @@ Choose **Rainy city** or **Faded afternoon** independently of the synth preset.
 back. The spacebar toggles playback when you are outside a dialog or interactive
 control. Sliders, preset choices, and dialogs are keyboard accessible.
 
-## Fifteen sound palettes
+## Sixteen sound palettes
 
 Each preset selects an instrument architecture, harmonic vocabulary, motif, and
 starting mix. Variations explore a bounded range around that identity. The table
@@ -75,6 +75,7 @@ describes the authored starting points; your settings can take them elsewhere.
 | **Last light** | Expressive synth brass and electric keys | Warm, wistful brass harmony with soft keys and gentle motion. |
 | **Paper lanterns** | Soft piano-like keys and warm pads | Intimate, prominent keys, small recurring melodies, and a quiet sustained backdrop. |
 | **Daydream** | Rounded bell keys and wavering pads | Light, lilting melodic figures with a warm music-box character and gentle motion. |
+| **Window seat** | Felt piano and wordless choir | Six independent tape-length cycles bring a recurring piano phrase into different combinations with three vowel-shaped voices and a low pedal. |
 
 The palettes are defined in [sound-presets.ts](src/sound-presets.ts) and
 [audio.ts](src/audio.ts). All begin with the optional pulse and headphone layer
@@ -318,7 +319,7 @@ site into `dist/`; `npm run preview` serves that production build locally.
 | [src/audio.ts](src/audio.ts) | Synthesis, generative score, phrase checkpoints, mixing, and playback lifecycle. |
 | [src/rhythm.ts](src/rhythm.ts) | Pulse patterns, beat scheduling, and the separate headphone-tone pair. |
 | [src/room.ts](src/room.ts) | Deterministic stereo room response. |
-| [src/sound-presets.ts](src/sound-presets.ts) | Fifteen starting palettes and bounded variation generation. |
+| [src/sound-presets.ts](src/sound-presets.ts) | Sixteen starting palettes and bounded variation generation. |
 | [src/presets.ts](src/presets.ts) | Landscape definitions and control labels. |
 | [src/storage.ts](src/storage.ts) | Local save validation, migration, and persistence. |
 | [src/AtmosphereScene.tsx](src/AtmosphereScene.tsx) | Landscape presentation and animation. |

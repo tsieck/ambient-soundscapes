@@ -1,6 +1,7 @@
 import type { SoundIdentity, SoundPresetId } from './sound-presets'
 import { createRhythm, RHYTHM_DEFAULTS } from './rhythm'
 import { createRoomImpulse } from './room'
+import { advanceTapeScore, createTapeReels, type TapeCursor } from './tape-score'
 export type { SoundIdentity, SoundPresetId } from './sound-presets'
 
 export type AtmosphereId = 'city' | 'afternoon'
@@ -156,7 +157,7 @@ interface Palette {
   air: number
   brightness: number
   wow: number
-  pad: 'subtractive' | 'bowed' | 'organ' | 'fm' | 'brass'
+  pad: 'subtractive' | 'bowed' | 'organ' | 'fm' | 'brass' | 'choir'
   detail: 'fm' | 'electric' | 'pluck' | 'bowed' | 'felt'
   ratio: number
   index: number
@@ -185,6 +186,7 @@ const PALETTES: Record<SoundPresetId, Palette> = {
   afterglow: { partials: [1,.46,.31,.19,.13,.09,.063,.044,.03,.021], modes: [MAJOR,LYDIAN], attack: 9.5, noteAttack: .14, noteLength: 13, air: .65, brightness: 1.03, wow: 1.1, pad: 'brass', detail: 'electric', ratio: 1, index: 1.3, motif: [0,2,4,1] },
   lantern: { partials: [1,.2,.11,.045,.02,.008], modes: [MAJOR,DORIAN], attack: 7, noteAttack: .035, noteLength: 8.5, air: .45, brightness: .94, wow: .55, pad: 'subtractive', detail: 'felt', ratio: 1, index: .5, motif: [0,1,4,2], phrasing: { spacing: .64, cycle: .78, lilt: .12 } },
   daydream: { partials: [1,.14,.065,.025,.009], modes: [LYDIAN,MAJOR], attack: 6.5, noteAttack: .055, noteLength: 6.8, air: .65, brightness: 1.04, wow: .85, pad: 'subtractive', detail: 'fm', ratio: 3, index: .38, motif: [0,2,1,4], phrasing: { spacing: .54, cycle: .7, lilt: .22 } },
+  window: { partials: [1,.67,.48,.36,.28,.22,.17,.14,.11,.085,.065,.05,.038,.03,.022,.016], modes: [MAJOR,DORIAN], attack: 6, noteAttack: .027, noteLength: 7, air: .55, brightness: 1.12, wow: .75, pad: 'choir', detail: 'felt', ratio: 1, index: .5, motif: [2,0,4] },
 }
 
 function normalizeIdentity(id: AtmosphereId, identity?: SoundIdentity): SoundIdentity {
@@ -248,6 +250,7 @@ interface Composition {
   focusUntil: number
   focusStrand: number
   strands: MelodicStrand[]
+  tapeCursors: TapeCursor[]
 }
 interface ScoreCheckpoint { time: number; randomState: number; composition: Composition }
 
@@ -287,11 +290,13 @@ export function createSoundscape(
   let checkpoints: ScoreCheckpoint[] = []
   const motifRotation = Math.floor(characterRandom() * palette.motif.length)
   const originalMotif = [...palette.motif.slice(motifRotation), ...palette.motif.slice(0, motifRotation)]
+  const reels = palette.pad === 'choir' ? createTapeReels(seededRandom(musicalSeed ^ 0x31af270b)) : []
   let composition: Composition = {
     degree: 0, dwell: Math.round((1 - value.movement) * 1.5), phrase: 0,
     chapter: { kind: 0, remaining: 3 + Math.floor(characterRandom() * 2), register: 0, spectral: .9, details: .95, texture: .75 },
     voicing: [], motif: [...originalMotif], lastBass: root,
     focusUntil: startedAt, focusStrand: -1,
+    tapeCursors: reels.map(reel => ({ origin: startedAt + reel.first, note: 0, turn: 0 })),
     strands: [0, 1].map((index) => ({
       next: startedAt + (index === 0 ? 2.2 : 22 + characterRandom() * 7),
       origin: startedAt, position: 0,
@@ -307,6 +312,7 @@ export function createSoundscape(
   const copyComposition = (state: Composition): Composition => ({
     ...state, chapter: { ...state.chapter }, voicing: [...state.voicing], motif: [...state.motif],
     strands: state.strands.map((strand) => ({ ...strand, figureMotif: [...strand.figureMotif] })),
+    tapeCursors: state.tapeCursors.map(cursor => ({ ...cursor })),
   })
 
   const keep = <T extends AudioNode>(node: T): T => { nodes.push(node); return node }
@@ -396,6 +402,18 @@ export function createSoundscape(
   chorusAmount.connect(music)
   chorusAmount.connect(roomInput)
 
+  // Quiet soundboard modes couple successive struck notes. A new attack
+  // excites whichever mode is near one of its partials; the board retains its
+  // identity as the melody changes pitch. The detail fader feeds every mode.
+  if (palette.detail === 'felt' || palette.detail === 'electric' || palette.detail === 'pluck') {
+    const board = gain(palette.detail === 'felt' ? .24 : .14)
+    for (const [hz, q, weight] of [[193, 7, .8], [327, 10, 1], [511, 12, .75], [837, 14, .46]]) {
+      layerBus.detail.connect(filter('bandpass', hz, q)).connect(gain(weight)).connect(board)
+    }
+    board.connect(music)
+    board.connect(roomInput)
+  }
+
   const harmonics = new Float32Array([0, ...palette.partials.map((partial) => partial * (.85 + characterRandom() * .3))])
   const padWave = context.createPeriodicWave(new Float32Array(harmonics.length), harmonics)
   const shadowHarmonics = harmonics.map((partial, index) => partial * (index < 2 ? 1 : index % 2 ? .74 : .35))
@@ -464,7 +482,17 @@ export function createSoundscape(
       voice.colors.push({ param: toneInput.frequency, kind: 'brass-highpass', amount: .85 })
     }
     if (breath) colorMotion(breath, tone.detune, brass ? 480 : 320)
-    tone.connect(envelope)
+    if (layer === 'pad' && palette.pad === 'choir' && breath) {
+      // A quiet direct fundamental carries pitch underneath the vowel.
+      // Formants stay in vocal register as the glottal source changes notes.
+      tone.connect(gain(.32)).connect(envelope)
+      const singer = .94 + timbreRandom() * .12
+      for (const [center, q, level, travel] of [[490, 3.2, 1.05, 260], [1090, 4.5, .67, -190], [2380, 5, .24, 90]]) {
+        const formant = filter('bandpass', center * singer, q)
+        colorMotion(breath, formant.detune, travel)
+        tone.connect(formant).connect(gain(level)).connect(envelope)
+      }
+    } else tone.connect(envelope)
     if (fm) {
       const carrier = keep(context.createOscillator()), modulator = keep(context.createOscillator())
       carrier.type = 'sine'; modulator.type = 'sine'
@@ -731,7 +759,11 @@ export function createSoundscape(
       const count = 2 + Math.round(value.density * 2)
       const chord = leadVoicing(chordDegree, count)
       const padRest = chapter.kind === 2 && composition.phrase % 2 === 1
-      if (!padRest) {
+      if (reels.length) {
+        const pools = { bed: beds, pad: pads, detail: details }
+        advanceTapeScore(reels, composition.tapeCursors, scoreTime + duration, value.density, value.movement, value.tension,
+          note => putNote(pools[note.part], scaleNote(note.degree), note.time, note.length, note.level, chapter.spectral, note.pan))
+      } else if (!padRest) {
         chord.forEach((midi, index) => {
           // A shared pitch already living through most of the next phrase is
           // retained. New harmony arrives around it instead of rearticulating
@@ -757,13 +789,13 @@ export function createSoundscape(
       while (bass > 52) bass -= 12
       while (bass < 34) bass += 12
       if (Math.abs(bass - composition.lastBass) > 7 && bass - 12 >= 34) bass -= 12
-      putNote(beds, bass, scoreTime, duration * 1.28, .17, .7)
-      if (chapter.kind === 1 || (composition.phrase % 2 === 0 && value.density > .5)) {
+      if (!reels.length) putNote(beds, bass, scoreTime, duration * 1.28, .17, .7)
+      if (!reels.length && (chapter.kind === 1 || (composition.phrase % 2 === 0 && value.density > .5))) {
         putNote(beds, Math.min(67, bass + 19), scoreTime + duration * .43, duration * .62, .035, .8)
       }
       composition.lastBass = bass
 
-      scheduleStrands(scoreTime + duration, chordDegree)
+      if (!reels.length) scheduleStrands(scoreTime + duration, chordDegree)
       if (composition.phrase === 0 || random() < chapter.texture) {
         const tone = chord[Math.floor(random() * chord.length)] ?? root + 24
         putNote(textures, tone, scoreTime + (composition.phrase === 0 ? .3 : 2 + random() * 8),

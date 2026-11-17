@@ -122,15 +122,15 @@ test('live controls and landscapes preserve the running sound graph without rest
   await expect(page.getByRole('button', { name: 'Play soundscape' })).toBeEnabled();
 });
 
-test('fifteen sound presets set defaults while scenery, volume, and rain remain independent', async ({ page }) => {
-  expect(SOUND_PRESETS).toHaveLength(15);
+test('sixteen sound presets set defaults while scenery, volume, and rain remain independent', async ({ page }) => {
+  expect(SOUND_PRESETS).toHaveLength(16);
   expect(SOUND_PRESETS.every(preset => preset.settings.pulse === 0 && preset.settings.binaural === 0)).toBe(true);
   await page.goto('/');
   await page.getByLabel('Master volume').press('End');
   await page.getByLabel('Rain', { exact: true }).press('End');
-  await expect(page.getByRole('button', { name: 'Choose sound preset' })).toContainText('15 PRESETS');
+  await expect(page.getByRole('button', { name: 'Choose sound preset' })).toContainText('16 PRESETS');
   await page.getByRole('button', { name: 'Choose sound preset' }).click();
-  await expect(page.getByRole('dialog').locator('button[aria-pressed="false"]')).toHaveCount(14);
+  await expect(page.getByRole('dialog').locator('button[aria-pressed="false"]')).toHaveCount(15);
   await expect(page.getByRole('dialog').getByRole('button', { pressed: true })).toHaveCount(1);
   await page.getByRole('dialog').getByRole('button', { name: /Tape afternoon/ }).click();
   await expect(page.getByRole('button', { name: 'Choose sound preset' })).toBeFocused();
@@ -378,6 +378,7 @@ test('dialog traps focus, accepts spaces in the name, and returns focus after Es
 test('Space toggles listening and Escape exits focus view from its focused button', async ({ page }) => {
   await observeAudio(page);
   await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Play soundscape' })).toBeEnabled();
   await page.keyboard.press('Space');
   await expect(page.getByRole('button', { name: 'Pause soundscape' })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => (window as unknown as AudioProbe).__contexts[0]?.state)).toBe('running');
@@ -437,14 +438,14 @@ for (const width of [320, 390, 768]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
     await page.getByRole('button', { name: 'Choose sound preset' }).click();
     const choices = page.getByRole('dialog').locator('button[aria-pressed="false"]');
-    await expect(choices).toHaveCount(14);
-    const last = page.getByRole('dialog').getByRole('button', { name: /Daydream/ });
+    await expect(choices).toHaveCount(15);
+    const last = page.getByRole('dialog').getByRole('button', { name: /Window seat/ });
     await last.scrollIntoViewIfNeeded();
     await expect(last).toBeInViewport();
     const lastBox = await last.boundingBox();
     expect(lastBox!.x).toBeGreaterThanOrEqual(0);
     expect(lastBox!.x + lastBox!.width).toBeLessThanOrEqual(width);
     await last.click();
-    await expect(page.getByRole('heading', { name: 'Daydream', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Window seat', exact: true })).toBeVisible();
   });
 }

@@ -254,7 +254,7 @@ function App() {
   };
 
   return <div className={`stillroom theme-${atmosphere} ${immersive ? 'immersive' : ''}`}>
-    <AtmosphereScene atmosphere={atmosphere} rain={settings.rain} darkness={settings.darkness} movement={settings.movement} playing={playing} />
+    <AtmosphereScene atmosphere={atmosphere} rain={settings.rain} darkness={settings.darkness} movement={settings.movement} />
     <div className="scene-shade" aria-hidden="true" />
     <div className="app-shell relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col px-6 md:px-12 lg:px-[72px]">
       <header className="app-header flex items-center justify-between gap-4 py-7 md:py-9">

@@ -391,6 +391,28 @@ test('Space toggles listening and Escape exits focus view from its focused butto
   await expect(page.getByRole('button', { name: 'Just listen', exact: true })).toBeFocused();
 });
 
+test('living scenes move before playback, rest at zero movement and respect reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  const air = page.locator('.scene-weather');
+  const frame = () => air.evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL());
+  await expect(air).toBeVisible();
+  await page.getByLabel('Rain', { exact: true }).press('Home');
+  const drizzle = await frame();
+  await expect.poll(frame).not.toBe(drizzle);
+  await page.getByRole('button', { name: /Faded afternoon/ }).click();
+  const leaves = await frame();
+  await expect.poll(frame).not.toBe(leaves);
+  await expect(page.getByRole('button', { name: 'Play soundscape' })).toBeEnabled();
+  await page.getByLabel('Movement', { exact: true }).press('Home');
+  await expect(air).toBeHidden();
+  await page.getByLabel('Movement', { exact: true }).press('End');
+  await expect(air).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(air).toBeHidden();
+  await expect(page.locator('.scene-light')).toBeHidden();
+});
+
 test('both photographic backgrounds decode and stay fixed behind the scrolling controls', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');

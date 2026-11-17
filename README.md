@@ -48,6 +48,11 @@ piano-like keys tracing small melodies against a warm backdrop. **Daydream**
 answers with rounded bell notes, gently wavering pads, and lilting figures.
 
 Choose **Rainy city** or **Faded afternoon** independently of the synth preset.
+Rainy city has a light visible drizzle, with heavier streaks and river ripples as
+you raise Rain. In Faded afternoon, wind moves through the hillside grass and
+tumbling leaves catch the low sun. Both scenes move before playback. Set
+Movement to zero for a still photograph. Reduced-motion preferences are
+respected, and the scene rests whenever the tab is hidden.
 **Just listen** hides the controls; **Show controls** or **Escape** brings them
 back. The spacebar toggles playback when you are outside a dialog or interactive
 control. Sliders, preset choices, and dialogs are keyboard accessible.

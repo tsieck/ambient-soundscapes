@@ -9,6 +9,7 @@
 }
 
 .scene-photo,
+.scene-light,
 .scene-weather,
 .scene-darkness {
   position: absolute;
@@ -35,6 +36,8 @@
   transition: opacity 0.8s ease;
 }
 
+.scene-weather[hidden], .scene-light[hidden] { display: none; }
+
 @media (max-width: 700px) {
   .scene-photo--city { object-position: 67% center; }
   .scene-photo--afternoon { object-position: 62% center; }
@@ -42,4 +45,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .scene-photo { transition-duration: 0.15s; }
+  .scene-light, .scene-weather { display: none; }
 }
